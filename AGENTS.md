@@ -17,13 +17,16 @@ tagged `v<version>`; consumers pin a tag or the same npm version.
   into that harness's tools: `src/opencode/` (native plugin), `src/mcp/` (the
   stdio MCP server the other plugins bundle), and `src/cli/`, the command line
   the Hermes plugin (Python, in `src/hermes/`) calls.
-- `docs/conventions.md` — the rules every tool follows.
+- `docs/conventions.md` — the rules every tool follows, and the model
+  fallback's own rules ("The model fallback"): its terms, names, settings,
+  defaults, state, notices, the OpenCode versions it runs on, and tests.
 - Tests sit beside the code they test (`*.test.ts`, `bun test`).
 
 ## Rules
 
-- **Every tool follows [`docs/conventions.md`](docs/conventions.md).** A
-  change to a convention changes that file first, with its reason.
+- **Every tool follows [`docs/conventions.md`](docs/conventions.md)**, and the
+  model fallback follows its own part of it. A change to a convention changes
+  that file first, with its reason.
 - **`src/core/` knows no harness, no caller and no project.** No harness,
   product or machine names, paths or session conventions in code,
   descriptions or messages; the project's names reach it only through the

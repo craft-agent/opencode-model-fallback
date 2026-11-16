@@ -586,3 +586,111 @@ and every entry point checks them the same way.
   against a fake of that program on `PATH`.
 - A test file stays within about 300 lines, split by topic
   (`<name>.<topic>.test.ts`), so one commit can carry a change and its test.
+
+## The model fallback
+
+The rules below are this package's own, on top of everything above; where one
+changes a rule above, it says so. The discussion behind them is on
+[#2](https://github.com/craft-agent/opencode-model-fallback/issues/2).
+
+### Scope
+
+- **The fallback is an OpenCode plugin's hooks, not tools.** It chooses the
+  model a subagent starts on and moves a session to another model on a limit,
+  which only OpenCode 2's plugin hooks can do. The rules on tools above apply
+  to any tool the package adds beside it.
+- **It knows no particular setup.** Routes, roles, models and provider
+  specifics reach it as settings or adapters; no role name, account label or
+  machine path appears in code, defaults, messages or examples.
+
+### Terms
+
+The settings, notices, README and code use one vocabulary:
+
+| Term     | Means                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| route    | an agent's steps, in the order they are tried                                                  |
+| step     | one entry of a route: `<provider>/<model>#<variant>`                                           |
+| launch   | choosing the model a subagent starts on                                                        |
+| move     | switching a running session to the next step                                                   |
+| limit    | a refusal that waiting or another model would avoid: a usage window, a quota, an empty balance |
+| cooldown | how long a model that hit a limit is passed over                                               |
+
+A route needs no second notion of where a step runs: that is its provider.
+"Preflight", "place" and "stop", the names of the setup this came from, are
+not used.
+
+### Names
+
+- **The plugin id is the package name, `opencode-model-fallback`**, so it can
+  be traced from the npm name without a lookup.
+- **A key the plugin owns in a shared space is
+  `opencode-model-fallback.<name>`**: session metadata, and state shared
+  between modules through `Symbol.for`. It cannot collide with another
+  plugin's key, and it says whose it is.
+- **Setting keys are snake_case**, as in "Toolsets and settings" above, which
+  is also how OpenCode's own configuration writes its keys (`small_model`).
+
+### Settings
+
+- **A flat setting** (text, boolean, number, list, path) is declared in
+  `options` in `src/project.ts` and has its variable
+  `OPENCODE_MODEL_FALLBACK_<NAME>`, as above.
+- **A nested setting is a plugin option only**, read and checked by the
+  package itself: a table has no sensible variable. A part it cannot use is
+  ignored and named in a notice, never a reason to stop the rest.
+- **A route table maps an agent's name to its steps**:
+  `routes: { "<agent>": ["<provider>/<model>#<variant>", …] }`, tried in
+  order. A step is written as `/models` and an agent's `model` write it, with
+  `#<variant>` added, so it can be copied from either without translation.
+
+### Defaults
+
+- **With nothing configured, the plugin changes nothing.** There are no
+  built-in routes: only an agent with a route of its own is launched or moved,
+  the primary agent included.
+- **A boolean setting left out takes the side that changes the least.**
+- **No default names a role, model, provider account or machine**, since a
+  default is the one value every user gets.
+
+### State
+
+- **State lives in the package's own directory**: `$XDG_STATE_HOME/opencode-model-fallback/`,
+  else `~/.local/state/opencode-model-fallback/`, the same rule as
+  `grants_dir`; the path setting `state_dir` moves it. OpenCode's own state
+  directory belongs to OpenCode.
+
+### Notices
+
+- **Every notice the plugin adds starts with `[Model fallback: …]`**:
+  `[Model fallback: <agent> A → B; <why>]` for a launch or a move,
+  `[Model fallback: config ignored: …]` for a setting it could not use. One
+  prefix tells a reader whose notice it is.
+- **Notices are English and not translated**: the reader is the agent that
+  receives the result, not a person choosing a language.
+
+### OpenCode versions
+
+- **The plugin runs on any OpenCode from a minimum version on.** Below it,
+  nothing is registered. OpenCode releases often, and a list of trusted
+  versions would leave most installs without the plugin until a release of
+  this package caught up.
+- **A feature whose hook or call is missing stays off**, and says so once in
+  a notice; the others run. The plugin checks at setup that each hook and
+  call a feature needs is there.
+- **The versions a release was checked on are listed in the README and run in
+  CI**, as information, not as a gate. An API that keeps its name but changes
+  its meaning is caught by those runs and by reports, not by the check above.
+
+### Tests
+
+- **Unit tests run on one shared fake of OpenCode 2's plugin context**, which
+  records hook registrations and calls such as `switchModel`. The clock, the
+  usage source and the state directory are passed in.
+- **No test reads a file outside the repository**, such as a consumer's own
+  configuration or agent files; an example configuration a test needs is a
+  fixture here.
+- **CI loads the built plugin into each OpenCode version the README lists**
+  and checks that the hooks and calls it needs are there. This adds to the
+  smoke runs above: a real OpenCode is a program on the machine, not a
+  service, and it catches a change in OpenCode before a person reports it.
