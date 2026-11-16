@@ -21,18 +21,35 @@ try {
 
   const added = []
   const skills = []
-  await plugin.setup({
+  const hooks = []
+  const cleanup = await plugin.setup({
+    app: { version: "2.1.2" },
     options: {},
     tool: { transform: async (callback) => callback({ add: (tool) => added.push(tool.name) }) },
     skill: { transform: async (callback) => callback({ add: (skill) => skills.push(skill.id) }) },
-    session: { get: async () => ({}) },
+    session: {
+      get: async () => ({}),
+      hook: async (name) => {
+        hooks.push(name)
+        return { dispose: async () => {} }
+      },
+    },
     permission: { assert: async () => {} },
   })
   expect(
     JSON.stringify(added.sort()) === JSON.stringify(EXPECTED_TOOLS),
     `Expected setup to register ${JSON.stringify(EXPECTED_TOOLS)}, got ${JSON.stringify(added)}.`,
   )
-  console.log(`setup registers ${added.length} tools and ${skills.length} skills.`)
+  expect(
+    hooks.length === 0,
+    `Expected setup to register no hook with nothing configured, got ${JSON.stringify(hooks)}.`,
+  )
+  expect(
+    cleanup === undefined || typeof cleanup === "function",
+    `Expected setup to return a cleanup or nothing, got ${typeof cleanup}.`,
+  )
+  await cleanup?.()
+  console.log(`setup registers ${added.length} tools, ${skills.length} skills and ${hooks.length} hooks.`)
 } catch (error) {
   console.error(error)
   process.exit(1)

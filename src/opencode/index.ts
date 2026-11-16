@@ -2,6 +2,7 @@ import { packageRoot } from "../entry/package-root"
 import { PROJECT } from "../project"
 import { PACKAGE_TOOLS } from "../entry/tools"
 import { ALL_TRANSLATIONS } from "../words"
+import { composeSetup } from "./compose"
 import { createV2Setup } from "./v2"
 import type { OpenCodePlugin } from "./types"
 
@@ -14,7 +15,9 @@ const OWN_DIR = packageRoot(import.meta.url)
 /** The OpenCode plugin: V2 reads `id` and `setup`. */
 const plugin: OpenCodePlugin = {
   id: PROJECT.name,
-  setup: createV2Setup(PACKAGE_TOOLS, { skillsDir: SKILLS_DIR, ownDir: OWN_DIR, translations: ALL_TRANSLATIONS }),
+  setup: composeSetup(
+    createV2Setup(PACKAGE_TOOLS, { skillsDir: SKILLS_DIR, ownDir: OWN_DIR, translations: ALL_TRANSLATIONS }),
+  ),
 }
 
 export default plugin
