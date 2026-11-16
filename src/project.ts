@@ -4,7 +4,7 @@ import type { OptionSpec } from "./core"
 export const PROJECT = {
   /** The plugin, MCP server and program name. */
   name: "opencode-model-fallback",
-  /** The command line the Hermes plugin calls. */
+  /** The command line's name. */
   cli: "opencode-model-fallback-cli",
   /** Every tool ID starts with `<toolPrefix>_`. */
   toolPrefix: "fallback",

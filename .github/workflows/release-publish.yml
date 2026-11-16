@@ -34,7 +34,6 @@ jobs:
         .codex-plugin/plugin.json
         .claude-plugin/plugin.json
         .antigravity-plugin/plugin.json
-        plugin.yaml
       build-command: pnpm install --frozen-lockfile && pnpm run build
       artifacts: dist
       setup-pnpm: true

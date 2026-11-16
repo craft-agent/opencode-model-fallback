@@ -9,7 +9,7 @@ import { visible } from "./visible"
  * counts the facts a description drops past its eighth with `more`, and a
  * card with a budget counts the facts it leaves out with it too; every prompt
  * may leave characters out of a cut text or value. They are in snake case
- * because the command line hands the words to the Hermes plugin as JSON.
+ * because the command line hands the words on as JSON.
  */
 export type PromptWords = {
   details: string

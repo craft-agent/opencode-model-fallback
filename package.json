@@ -29,12 +29,7 @@
     ".codex-plugin",
     ".agents/plugins",
     ".antigravity-plugin",
-    "mcp_config.json",
-    "plugin.yaml",
-    "__init__.py",
-    "src/hermes/opencode_model_fallback_hermes",
-    "!**/__pycache__",
-    "!**/*.pyc"
+    "mcp_config.json"
   ],
   "publishConfig": {
     "access": "public",

@@ -8,5 +8,4 @@ export const VERSION_FILES = [
   ".codex-plugin/plugin.json",
   ".claude-plugin/plugin.json",
   ".antigravity-plugin/plugin.json",
-  "plugin.yaml",
 ]

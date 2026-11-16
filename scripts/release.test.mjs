@@ -37,7 +37,6 @@ const SERVER_NAME = PLUGIN_NAME
 const CLI_NAME = `${PLUGIN_NAME}-cli`
 const REPOSITORY_URL = pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "")
 const [, OWNER, REPOSITORY] = /^https:\/\/github\.com\/([^/]+)\/([^/]+)$/.exec(REPOSITORY_URL) ?? []
-const HERMES_PACKAGE = `src/hermes/${PLUGIN_NAME.replaceAll("-", "_")}_hermes`
 
 /** The paths the release workflow passes as `version-files`, one per line. */
 function workflowVersionFiles() {
@@ -63,10 +62,6 @@ describe("version files", () => {
 
   test.each(jsonFiles)("%s carries the package's version at its top level", (file) => {
     expect(readJson(file).version).toBe(pkg.version)
-  })
-
-  test("plugin.yaml carries the package's version", () => {
-    expect(read("plugin.yaml").match(/^version: (.+)$/m)?.[1]).toBe(pkg.version)
   })
 
   test.each(jsonFiles)("%s names the plugin", (file) => {
@@ -128,7 +123,7 @@ describe("MCP configurations", () => {
     expect(new Set(PROJECT.toolVariables).size).toBe(PROJECT.toolVariables.length)
   })
 
-  test("the package's options are typed snake_case settings shared with Hermes", () => {
+  test("the package's options are typed snake_case settings", () => {
     for (const [name, spec] of Object.entries(PROJECT.options)) {
       expect(name).toMatch(/^[a-z]+(?:_[a-z]+)*$/)
       const { type, ...bounds } = typeof spec === "string" ? { type: spec } : spec
@@ -145,11 +140,6 @@ describe("MCP configurations", () => {
       }
       if (bounds.min !== undefined && bounds.max !== undefined) expect(bounds.min).toBeLessThanOrEqual(bounds.max)
     }
-    const declaration = read(`${HERMES_PACKAGE}/project.py`).match(
-      /^OPTIONS: dict\[str, str \| dict\[str, object\]\] = (\{.*\})$/m,
-    )
-    expect(declaration).not.toBeNull()
-    expect(JSON.parse(declaration[1].replace(/\bTrue\b/g, "true"))).toEqual(PROJECT.options)
   })
 })
 
@@ -163,14 +153,10 @@ describe("marketplaces", () => {
 })
 
 describe("package files", () => {
-  const manifests = [...VERSION_FILES, ...Object.keys(MCP_CONFIGS), ...MARKETPLACES, "__init__.py", HERMES_PACKAGE]
+  const manifests = [...VERSION_FILES, ...Object.keys(MCP_CONFIGS), ...MARKETPLACES]
 
   test.each(["dist", ...manifests])("%s is packed", (path) => {
     expect(isPacked(path, pkg.files)).toBe(true)
-  })
-
-  test("the Hermes tests are not packed", () => {
-    expect(isPacked("src/hermes/tests", pkg.files)).toBe(false)
   })
 
   // The builds bundle everything they import, and plugin installs that clone
