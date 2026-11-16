@@ -1,8 +1,8 @@
 import type { z } from "zod"
 
-/** The slices of the two OpenCode plugin APIs the entry point uses; neither package is imported at runtime. */
+/** The slices of the OpenCode V2 plugin API the entry point uses; the package is not imported at runtime. */
 
-/** The options a plugin is configured with; V1 passes them to `server`, V2 as `ctx.options`. */
+/** The options a plugin is configured with, passed as `ctx.options`. */
 export type PluginOptions = Readonly<Record<string, unknown>>
 
 /** Mirrors the V2 `permission.assert` input of `@opencode/plugin` (promise API). */
@@ -65,54 +65,15 @@ export type V2Context = {
   }
   permission: {
     assert(input: V2PermissionRequest): Promise<void>
-    /** The `evaluate` hook, which no installed `@opencode-ai/plugin` types yet; a host without it leaves the rules as they are. */
+    /** The `evaluate` hook, which the plugin types may not declare yet; a host without it leaves the rules as they are. */
     hook?(name: "evaluate", fn: (event: V2PermissionEvaluation) => void | Promise<void>): Promise<unknown> | void
   }
   tool: { transform: V2Transform<V2Tool> }
   skill: { transform: V2Transform<V2Skill> }
 }
 
-/** Mirrors the `ask` input of the V1 tool context (`@opencode-ai/plugin`). */
-export type V1AskRequest = {
-  permission: string
-  patterns: string[]
-  always: string[]
-  metadata: Record<string, unknown>
-}
-
-/** Mirrors the V1 tool context (`@opencode-ai/plugin`), reduced to what a call here reads. */
-export type V1ToolContext = {
-  directory: string
-  worktree: string
-  abort: AbortSignal
-  ask(request: V1AskRequest): Promise<void>
-}
-
-/** Mirrors a V1 tool definition (`@opencode-ai/plugin`): a Zod shape for `args`, and a string result. */
-export type V1Tool = {
-  description: string
-  args: Record<string, z.ZodType>
-  execute(args: unknown, context: V1ToolContext): Promise<string>
-}
-
-/**
- * Mirrors the config a V1 `config` hook receives (`@opencode-ai/plugin`),
- * reduced to `permission`: one action for every tool, or an action (or a
- * pattern-to-action record) per tool id.
- */
-export type V1Config = {
-  permission?: string | Record<string, unknown>
-}
-
-/** Mirrors the hooks a V1 `server` returns (`@opencode-ai/plugin`), reduced to `tool` and `config`. */
-export type V1Hooks = {
-  tool: Record<string, V1Tool>
-  config?: (config: V1Config) => Promise<void>
-}
-
-/** Mirrors V1's `PluginModule` (`@opencode-ai/plugin`) and the V2 plugin (`id`, `setup`) in one module. */
+/** Mirrors the V2 plugin: an `id` and a `setup`. */
 export type OpenCodePlugin = {
   id: string
   setup(context: V2Context): Promise<void>
-  server(input: unknown, options?: PluginOptions): Promise<V1Hooks>
 }
