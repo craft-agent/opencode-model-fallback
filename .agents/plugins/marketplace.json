@@ -1,11 +1,11 @@
 {
-  "name": "agent-tool-starter",
+  "name": "opencode-model-fallback",
   "interface": {
-    "displayName": "craftsamo"
+    "displayName": "Craft Agent"
   },
   "plugins": [
     {
-      "name": "agent-tool-starter",
+      "name": "opencode-model-fallback",
       "source": {
         "source": "local",
         "path": "./"
