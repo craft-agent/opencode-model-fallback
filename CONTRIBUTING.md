@@ -28,39 +28,27 @@ Run these before you push:
 pnpm run format:check
 pnpm run typecheck
 pnpm test
-python -m unittest discover -s src/hermes/tests
 pnpm run build
-pnpm run manifests:check
 pnpm run smoke
 ```
 
-The Hermes plugin needs Python 3.11 or later and no packages. After a change to a tool's ID, run `pnpm run build && pnpm run manifests` to update `plugin.yaml`.
-
-CI also runs Hermes' install scan on the tree a release carries, as [RELEASING.md](RELEASING.md#hermes-install-scan) describes. To run it yourself, check out [Hermes Agent](https://github.com/NousResearch/hermes-agent) at the commit `HERMES_AGENT_COMMIT` names in `.github/workflows/tests.yml`, then scan the tree after `pnpm run build`:
-
-```sh
-tree="$(mktemp -d)"
-git archive HEAD | tar -x -C "$tree"
-cp -R dist "$tree/dist"
-python scripts/hermes_scan.py --scanner <hermes-agent checkout> "$tree"
-HERMES_AGENT_DIR=<hermes-agent checkout> python -m unittest discover -s scripts -p 'test_*.py'
-```
+`pnpm run smoke` loads the built plugin under Node and checks what it registers.
 
 ## Commits
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/): `type(scope): subject`, in the imperative.
 
-| Type       | For                                              |
-| ---------- | ------------------------------------------------ |
-| `feat`     | A new tool, option, skill or harness integration |
-| `fix`      | Something that did not work as documented        |
-| `docs`     | Documentation only                               |
-| `ci`       | This repository's own CI and release jobs        |
-| `refactor` | Restructuring without a change in behavior       |
-| `test`     | Tests only                                       |
-| `chore`    | Anything else, such as tooling or a version      |
+| Type       | For                                           |
+| ---------- | --------------------------------------------- |
+| `feat`     | A new tool, option, skill or fallback feature |
+| `fix`      | Something that did not work as documented     |
+| `docs`     | Documentation only                            |
+| `ci`       | This repository's own CI and release jobs     |
+| `refactor` | Restructuring without a change in behavior    |
+| `test`     | Tests only                                    |
+| `chore`    | Anything else, such as tooling or a version   |
 
-The scope names the area, such as `core`, `opencode`, `mcp`, `hermes`, `skills` or `ci`. Keep each commit to one change that passes the checks on its own; the body says why, when the subject cannot.
+The scope names the area, such as `core`, `opencode`, `skills` or `ci`. Keep each commit to one change that passes the checks on its own; the body says why, when the subject cannot.
 
 ## Pull requests
 
