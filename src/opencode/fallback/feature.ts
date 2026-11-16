@@ -74,7 +74,8 @@ function reasonOf(error: unknown): string {
  * that collects its registrations. A feature that lacks a call, whose hook
  * registration fails (even when it catches the failure) or whose `register`
  * throws is recorded as unavailable and has what it registered taken back;
- * the others run.
+ * the others run. OpenCode accepts any hook name, so a failed registration
+ * only catches a host that throws, not a hook that does not exist.
  */
 export async function startFeatures(ctx: V2Context, features: readonly Feature[]): Promise<RunningFeatures> {
   const registrations: Registration[] = []

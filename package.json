@@ -27,6 +27,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "smoke": "node scripts/smoke-opencode.mjs",
+    "load:opencode": "node scripts/opencode-load.mjs",
     "test": "bun test --pass-with-no-tests --timeout 30000",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

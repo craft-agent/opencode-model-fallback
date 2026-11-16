@@ -595,12 +595,19 @@ not used.
   nothing is registered. OpenCode releases often, and a list of trusted
   versions would leave most installs without the plugin until a release of
   this package caught up.
-- **A feature whose hook or call is missing stays off**, and says so once in
-  a notice; the others run. The plugin checks at setup that each hook and
-  call a feature needs is there.
+- **A feature whose call is missing stays off**, and says so once in a
+  notice; the others run. The plugin checks at setup, by type, that each call
+  a feature needs is there.
+- **Hooks cannot be detected that way.** OpenCode 2.1.2 and 2.3.0 resolve
+  `session.hook` for any name: an unknown name returns a registration too. So
+  the hooks a feature uses must exist from the minimum version on. That is
+  checked against OpenCode's source for each tested version and by the CI
+  load check, which confirms the calls, the `subagent` tool and that setup
+  ran. A registration that throws still turns its feature off.
 - **The versions a release was checked on are listed in the README and run in
   CI**, as information, not as a gate. An API that keeps its name but changes
-  its meaning is caught by those runs and by reports, not by the check above.
+  its meaning is caught by those runs and by reports, not by the checks
+  above.
 
 ### Tests
 
@@ -610,7 +617,8 @@ not used.
 - **No test reads a file outside the repository**, such as a consumer's own
   configuration or agent files; an example configuration a test needs is a
   fixture here.
-- **CI loads the built plugin into each OpenCode version the README lists**
-  and checks that the hooks and calls it needs are there. This adds to the
+- **CI loads the built plugin into each OpenCode version the README lists**,
+  headless and without credentials, and checks that OpenCode ran its setup
+  and that the calls it needs are there. This adds to the
   smoke runs above: a real OpenCode is a program on the machine, not a
   service, and it catches a change in OpenCode before a person reports it.

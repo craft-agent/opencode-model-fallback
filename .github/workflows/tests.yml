@@ -57,18 +57,52 @@ jobs:
       - name: Smoke test the plugin under Node
         run: pnpm run smoke
 
+  # Loads the built plugin into each OpenCode version the README lists, to
+  # catch a change in OpenCode before a person reports it.
+  load:
+    name: Load into OpenCode ${{ matrix.opencode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        opencode: ["2.1.2", "2.3.0"]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # npm, not pnpm: pnpm may block the install script that picks the binary.
+      - name: Install OpenCode ${{ matrix.opencode }}
+        run: |
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/opencode" "@opencode/cli@${{ matrix.opencode }}"
+          test "$("$RUNNER_TEMP/opencode/node_modules/.bin/opencode" --version)" = "opencode v${{ matrix.opencode }}"
+      - name: Load the plugin into OpenCode
+        run: node scripts/opencode-load.mjs "$RUNNER_TEMP/opencode/node_modules/.bin/opencode" . "$RUNNER_TEMP/opencode-load"
+
   # The one check the protection of main requires (`repo-kit setup github
   # --required-check`), so jobs can be added or renamed without touching it.
   required:
     name: Required checks
     if: always()
-    needs: [check]
+    needs: [check, load]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required jobs
         env:
           CHECK_RESULT: ${{ needs.check.result }}
+          LOAD_RESULT: ${{ needs.load.result }}
         run: |
-          if [[ "$CHECK_RESULT" != "success" ]]; then
+          if [[ "$CHECK_RESULT" != "success" || "$LOAD_RESULT" != "success" ]]; then
             exit 1
           fi

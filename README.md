@@ -3,7 +3,8 @@
 Fall back between models in OpenCode when a primary agent or a subagent hits a limit.
 
 An OpenCode plugin, delivered as an npm package and pinned by its version. It
-needs OpenCode 2.1.2 or later.
+needs OpenCode 2.1.2 or later. It is tested on OpenCode 2.1.2 and 2.3.0, and
+CI loads the plugin into both.
 
 The fallback itself is being built: it will route each agent through an ordered
 list of models, launch a subagent on the first one that is available, and move
