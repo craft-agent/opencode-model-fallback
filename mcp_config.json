@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "opencode-model-fallback": {
-      "command": "node",
-      "args": ["${PLUGIN_ROOT}/dist/mcp.js"]
-    }
-  }
-}

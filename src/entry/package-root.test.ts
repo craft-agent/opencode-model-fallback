@@ -12,7 +12,7 @@ describe("packageRoot", () => {
   })
 
   test("is the directory holding package.json for a bundle in this package's dist", () => {
-    const root = packageRoot(new URL("../../dist/mcp.js", import.meta.url))
+    const root = packageRoot(new URL("../../dist/opencode.js", import.meta.url))
     expect(existsSync(join(root, "package.json"))).toBe(true)
   })
 

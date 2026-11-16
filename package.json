@@ -10,25 +10,15 @@
   },
   "homepage": "https://github.com/craft-agent/opencode-model-fallback#readme",
   "bugs": "https://github.com/craft-agent/opencode-model-fallback/issues",
-  "mcpName": "io.github.craft-agent/opencode-model-fallback",
   "type": "module",
   "main": "dist/opencode.js",
   "exports": {
     ".": "./dist/opencode.js",
     "./opencode": "./dist/opencode.js"
   },
-  "bin": {
-    "opencode-model-fallback": "dist/mcp.js"
-  },
   "files": [
     "dist",
-    "skills",
-    ".mcp.json",
-    ".claude-plugin",
-    ".codex-plugin",
-    ".agents/plugins",
-    ".antigravity-plugin",
-    "mcp_config.json"
+    "skills"
   ],
   "publishConfig": {
     "access": "public",
@@ -36,9 +26,7 @@
   },
   "scripts": {
     "build": "node scripts/build.mjs",
-    "manifests": "node scripts/manifests.mjs",
-    "manifests:check": "node scripts/manifests.mjs --check",
-    "smoke": "node scripts/smoke-mcp.mjs && node scripts/smoke-opencode.mjs",
+    "smoke": "node scripts/smoke-opencode.mjs",
     "test": "bun test --pass-with-no-tests --timeout 30000",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -47,7 +35,6 @@
   },
   "devDependencies": {
     "@craftsamo/repo-kit": "^1.4.0",
-    "@modelcontextprotocol/sdk": "^1.32.2",
     "@opencode-ai/plugin": "^1.19.5",
     "@types/bun": "^1.4.4",
     "@types/node": "^24.19.2",

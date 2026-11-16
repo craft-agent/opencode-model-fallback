@@ -2,7 +2,7 @@ import type { OptionSpec } from "./core"
 
 /** What makes this package itself; a project made from the starter sets these once (the setup script does). */
 export const PROJECT = {
-  /** The plugin and MCP server name. */
+  /** The plugin name. */
   name: "opencode-model-fallback",
   /** Every tool ID starts with `<toolPrefix>_`. */
   toolPrefix: "fallback",
@@ -14,6 +14,6 @@ export const PROJECT = {
   defaultToolsets: [] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
   options: {} as Readonly<Record<string, OptionSpec>>,
-  /** The environment variables the tools read besides the settings, which Codex forwards to the server after them. */
+  /** The environment variables the tools read besides the settings. */
   toolVariables: [] as readonly string[],
 } as const
