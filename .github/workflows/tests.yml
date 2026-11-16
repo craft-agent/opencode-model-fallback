@@ -56,7 +56,7 @@ jobs:
         run: pnpm run build
       - name: Check the plugin manifest
         run: pnpm run manifests:check
-      - name: Smoke test the MCP server, the plugin and the CLI under Node
+      - name: Smoke test the MCP server, and the plugin under Node
         run: pnpm run smoke
 
   # The one check the protection of main requires (`repo-kit setup github

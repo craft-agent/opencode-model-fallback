@@ -18,8 +18,7 @@
     "./opencode": "./dist/opencode.js"
   },
   "bin": {
-    "opencode-model-fallback": "dist/mcp.js",
-    "opencode-model-fallback-cli": "dist/cli.js"
+    "opencode-model-fallback": "dist/mcp.js"
   },
   "files": [
     "dist",
@@ -39,7 +38,7 @@
     "build": "node scripts/build.mjs",
     "manifests": "node scripts/manifests.mjs",
     "manifests:check": "node scripts/manifests.mjs --check",
-    "smoke": "node scripts/smoke-mcp.mjs && node scripts/smoke-opencode.mjs && node scripts/smoke-cli.mjs",
+    "smoke": "node scripts/smoke-mcp.mjs && node scripts/smoke-opencode.mjs",
     "test": "bun test --pass-with-no-tests --timeout 30000",
     "format": "prettier --write .",
     "format:check": "prettier --check .",

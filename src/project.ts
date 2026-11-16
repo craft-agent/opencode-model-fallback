@@ -2,10 +2,8 @@ import type { OptionSpec } from "./core"
 
 /** What makes this package itself; a project made from the starter sets these once (the setup script does). */
 export const PROJECT = {
-  /** The plugin, MCP server and program name. */
+  /** The plugin and MCP server name. */
   name: "opencode-model-fallback",
-  /** The command line's name. */
-  cli: "opencode-model-fallback-cli",
   /** Every tool ID starts with `<toolPrefix>_`. */
   toolPrefix: "fallback",
   /** Every setting's environment variable is `<envPrefix>_<SETTING>`. */
