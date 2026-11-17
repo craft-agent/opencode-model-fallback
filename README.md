@@ -6,10 +6,11 @@ An OpenCode plugin, delivered as an npm package and pinned by its version. It
 needs OpenCode 2.1.2 or later. It is tested on OpenCode 2.1.2 and 2.3.0, and
 CI loads the plugin into both.
 
-The fallback routes launches today: a subagent starts on the first usable model
-of its agent's route, and a model that hit a limit is passed over for a while.
-Moving a session to the next model when one hits a limit is still being built.
-With nothing configured, the plugin changes nothing.
+The fallback routes launches: a subagent starts on the first usable model of
+its agent's route, and a model that hit a limit is passed over for a while. It
+also moves a session, a primary agent's or a subagent's, to the next usable
+model of its route when its model hits a limit. With nothing configured, the
+plugin changes nothing.
 
 [`docs/conventions.md`](docs/conventions.md) describes how the tools are named
 and how they behave, and the rules of the fallback.
@@ -109,8 +110,8 @@ A model that hit a limit cools down: launches pass over a step with that model
 (`a/x is cooling down until 2026-11-17T09:30:00.000Z` in the notice) until the
 wait OpenCode reported, else `cooldown_ms`. A model listed without a variant
 cools down in every variant; one listed with a variant, in that variant only.
-A model that hits a limit again keeps the later end. The plugin never changes
-OpenCode's own decision to retry.
+A model that hits a limit again keeps the later end. A cooldown never changes
+OpenCode's own decision to retry; a [move](#moves) may.
 
 Cooldowns are saved in `cooldowns.json` in the state directory, so they survive
 a restart. Ends already past are dropped when the file is read and written.
@@ -121,6 +122,58 @@ loading or saving, is renamed to `cooldowns.json.unreadable`, counts as empty
 and is told once in a notice; a file that cannot be written is told once too,
 and the cooldowns stay in memory. The settings are in the [table](#settings):
 `max_wait_ms`, `cooldown_ms` and `state_dir`.
+
+## Moves
+
+A session moves when its model hits a limit (see [Cooldowns](#cooldowns)) and
+both of these hold: its agent has a route, and its model is a step of it. The
+agent is the one OpenCode names for the retry, else the session's own. The model
+is the step it equals, provider, ID and variant; a model with no variant that
+equals no step is taken for the first step with its provider and ID. A model
+off the route, or an agent with no route, is left to OpenCode, which decides as
+it would have. This holds for primary agents and subagents alike.
+
+The session moves to the first usable step after its own. A step is usable as it
+is for a launch: OpenCode lists its model for the session's directory as
+enabled, active and able to call tools (and, for a step with a variant, with
+that variant), and the model is not cooling down. The model that hit the limit
+is cooled down first, so it stays passed over. The plugin then switches the
+session to the step, variant included, and tells OpenCode to retry at once,
+replacing its own decision.
+
+When no step is left, the last step of the route being the common case, a
+subagent with a route stops retrying, so its parent gets the failure instead of
+waiting on a model that cannot answer. A primary agent is left to OpenCode, so
+a person still sees its retry or its error.
+
+A move or a stop is recorded in the session's metadata, under
+`opencode-model-fallback.moves`, as a list of `{ from, to, reason, at }` that
+keeps the session's other keys: `from` and `to` are steps (`to` is `null` for a
+stop), `reason` says why (`a/x hit a quota limit`, `a/x hit a rate limit`; a
+stop adds `; no usable step left`) and `at` is an ISO time. A record that cannot
+be written is dropped, and the move stands.
+
+When a subagent moves or stops, its parent is told. The result of the subagent
+call starts with one line for each move or stop made during that call (after any
+launch line), and the same records are in the result's metadata under
+`opencode-model-fallback.moves`. For a move:
+
+```text
+[Model fallback: reviewer provider-a/model-x → provider-b/model-y#high; provider-a/model-x hit a quota limit]
+```
+
+For a stop:
+
+```text
+[Model fallback: reviewer stopped on provider-b/model-y#high; provider-b/model-y#high hit a rate limit; no usable step left]
+```
+
+A call that continues a child tells only the moves made since the call began,
+and is otherwise left as it is. A child that cannot be read tells nothing.
+
+The moves need `session.switchModel`, `session.update` and `model.list` of
+OpenCode. A host without one keeps moves off, says so once, and still records
+cooldowns.
 
 ## Tools and skills
 

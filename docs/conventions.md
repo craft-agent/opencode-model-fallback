@@ -584,6 +584,8 @@ not used.
 
 - **Every notice the plugin adds starts with `[Model fallback: …]`**:
   `[Model fallback: <agent> A → B; <why>]` for a launch or a move,
+  `[Model fallback: <agent> stopped on A; <why>]` for a child that had
+  nowhere to move,
   `[Model fallback: config ignored: …]` for a setting it could not use. One
   prefix tells a reader whose notice it is.
 - **Notices are English and not translated**: the reader is the agent that
