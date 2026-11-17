@@ -1,4 +1,5 @@
 import type { Registration, V2Context, V2HookName, V2SessionHooks } from "../types"
+import { createOnceNotices, notice, type OnceNotices } from "./notice"
 
 /** A call of the context a feature may need; the runner checks that each is a function before the feature starts. */
 export type CallPath =
@@ -13,6 +14,8 @@ export type FeatureApi = {
   ): Promise<void>
   /** Keeps another registration (a tool transform) to be taken back with the feature's hooks; a host that returns none is ignored. */
   track(registration: Registration | void): void
+  /** The notices owed once, shared by every feature of a setup: a feature adds its own and takes them all when it first speaks to the reader. The features that stayed off are added after all have started. */
+  readonly notices: OnceNotices
 }
 
 /** One part of the fallback, with the calls and hooks it needs; it stays off when it cannot have them, the others run. */
@@ -75,12 +78,14 @@ function reasonOf(error: unknown): string {
  * registration fails (even when it catches the failure) or whose `register`
  * throws is recorded as unavailable and has what it registered taken back;
  * the others run. OpenCode accepts any hook name, so a failed registration
- * only catches a host that throws, not a hook that does not exist.
+ * only catches a host that throws, not a hook that does not exist. Each
+ * feature left off is named in the once-only notices (`FeatureApi.notices`).
  */
 export async function startFeatures(ctx: V2Context, features: readonly Feature[]): Promise<RunningFeatures> {
   const registrations: Registration[] = []
   const running: string[] = []
   const unavailable: UnavailableFeature[] = []
+  const notices = createOnceNotices()
 
   for (const feature of features) {
     const missing = missingCall(ctx, feature)
@@ -106,6 +111,7 @@ export async function startFeatures(ctx: V2Context, features: readonly Feature[]
       track(registration) {
         if (isRegistration(registration)) own.push(registration)
       },
+      notices,
     }
 
     try {
@@ -119,5 +125,6 @@ export async function startFeatures(ctx: V2Context, features: readonly Feature[]
     }
   }
 
+  for (const { name, reason } of unavailable) notices.add(notice(`${name} is off: ${reason}`))
   return { running, unavailable, dispose: () => disposeAll(registrations) }
 }

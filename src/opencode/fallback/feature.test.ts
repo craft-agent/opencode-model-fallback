@@ -162,6 +162,47 @@ describe("startFeatures", () => {
     expect(disposed).toEqual(["generate", "context", "retry"])
   })
 
+  test("gives every feature one shared queue of once-only notices", async () => {
+    const { ctx } = fakeContext()
+    const seen: unknown[] = []
+    await startFeatures(ctx, [
+      feature("a", [], { register: async (_ctx, api) => void api.notices.add("[from a]") }),
+      feature("b", [], {
+        async register(_ctx, api) {
+          seen.push(api.notices)
+          api.notices.add("[from b]")
+        },
+      }),
+    ])
+    const queue = seen[0] as { take(): string[] }
+    expect(queue.take()).toEqual(["[from a]", "[from b]"])
+    expect(queue.take()).toEqual([])
+  })
+
+  test("names each feature that stayed off in the once-only notices, after the features started", async () => {
+    const { ctx } = fakeContext({ omit: ["session.switchModel"] })
+    let queue: { take(): string[] } | undefined
+    await startFeatures(ctx, [
+      feature("moves", [], { calls: ["session.switchModel"] }),
+      feature("broken", [], {
+        async register() {
+          throw new Error("boom")
+        },
+      }),
+      feature("fine", [], {
+        async register(_ctx, api) {
+          queue = api.notices
+          api.notices.add("[own]")
+        },
+      }),
+    ])
+    expect(queue!.take()).toEqual([
+      "[own]",
+      "[Model fallback: moves is off: session.switchModel is not available]",
+      "[Model fallback: broken is off: boom]",
+    ])
+  })
+
   test("with no features, runs nothing and disposes nothing", async () => {
     const { ctx, hooks } = fakeContext()
     const started = await startFeatures(ctx, [])
