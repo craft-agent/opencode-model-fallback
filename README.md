@@ -7,8 +7,9 @@ needs OpenCode 2.1.2 or later. It is tested on OpenCode 2.1.2 and 2.3.0, and
 CI loads the plugin into both.
 
 The fallback routes launches today: a subagent starts on the first usable model
-of its agent's route. Moving a session to the next model when one hits a limit
-is still being built. With nothing configured, the plugin changes nothing.
+of its agent's route, and a model that hit a limit is passed over for a while.
+Moving a session to the next model when one hits a limit is still being built.
+With nothing configured, the plugin changes nothing.
 
 [`docs/conventions.md`](docs/conventions.md) describes how the tools are named
 and how they behave, and the rules of the fallback.
@@ -91,6 +92,35 @@ told once, on the first launch:
 ```text
 [Model fallback: config ignored: routes.reviewer[1]: "provider-b" is not provider/model#variant]
 ```
+
+## Cooldowns
+
+Once `routes` is configured, the plugin watches OpenCode's retries. A model
+hits a limit when a request to it fails with:
+
+- a quota error (`provider.quota`), or
+- a rate limit (`provider.rate-limit`, or status 429) that OpenCode will retry
+  only after a wait longer than `max_wait_ms`.
+
+Any other error, authentication failures included, is not a limit, and a rate
+limit OpenCode retries within `max_wait_ms` is left to OpenCode.
+
+A model that hit a limit cools down: launches pass over a step with that model
+(`a/x is cooling down until 2026-11-17T09:30:00.000Z` in the notice) until the
+wait OpenCode reported, else `cooldown_ms`. A model listed without a variant
+cools down in every variant; one listed with a variant, in that variant only.
+A model that hits a limit again keeps the later end. The plugin never changes
+OpenCode's own decision to retry.
+
+Cooldowns are saved in `cooldowns.json` in the state directory, so they survive
+a restart. Ends already past are dropped when the file is read and written.
+Processes that share a state directory (the background service and a
+standalone run) merge on every save: per model the later end wins. A process
+sees another's cooldown once it next saves. A file that cannot be read, when
+loading or saving, is renamed to `cooldowns.json.unreadable`, counts as empty
+and is told once in a notice; a file that cannot be written is told once too,
+and the cooldowns stay in memory. The settings are in the [table](#settings):
+`max_wait_ms`, `cooldown_ms` and `state_dir`.
 
 ## Tools and skills
 
@@ -212,15 +242,18 @@ The OpenCode service keeps the environment it started with; see
 
 An option wins over its environment variable.
 
-| Setting         | Variable                                | Meaning                                                                                                                                             |
-| --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `toolsets`      | `OPENCODE_MODEL_FALLBACK_TOOLSETS`      | the toolsets that are on, or `all`; default those `src/project.ts` names                                                                            |
-| `read_only`     | `OPENCODE_MODEL_FALLBACK_READ_ONLY`     | registers no tool that writes; wins over every other setting                                                                                        |
-| `unattended`    | `OPENCODE_MODEL_FALLBACK_UNATTENDED`    | no person can answer: a write runs only under a grant that covers it; off by default                                                                |
-| `grants_dir`    | `OPENCODE_MODEL_FALLBACK_GRANTS_DIR`    | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-model-fallback/grants`, else `~/.local/state/opencode-model-fallback/grants` |
-| `tools`         | `OPENCODE_MODEL_FALLBACK_TOOLS`         | single tools to add by ID, whatever their toolset                                                                                                   |
-| `exclude_tools` | `OPENCODE_MODEL_FALLBACK_EXCLUDE_TOOLS` | single tools to remove by ID; wins over `tools` and `toolsets`                                                                                      |
-| `language`      | `OPENCODE_MODEL_FALLBACK_LANGUAGE`      | the approval prompt's language, such as `ja`                                                                                                        |
+| Setting         | Variable                                | Meaning                                                                                                                                                    |
+| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `toolsets`      | `OPENCODE_MODEL_FALLBACK_TOOLSETS`      | the toolsets that are on, or `all`; default those `src/project.ts` names                                                                                   |
+| `read_only`     | `OPENCODE_MODEL_FALLBACK_READ_ONLY`     | registers no tool that writes; wins over every other setting                                                                                               |
+| `unattended`    | `OPENCODE_MODEL_FALLBACK_UNATTENDED`    | no person can answer: a write runs only under a grant that covers it; off by default                                                                       |
+| `grants_dir`    | `OPENCODE_MODEL_FALLBACK_GRANTS_DIR`    | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-model-fallback/grants`, else `~/.local/state/opencode-model-fallback/grants`        |
+| `tools`         | `OPENCODE_MODEL_FALLBACK_TOOLS`         | single tools to add by ID, whatever their toolset                                                                                                          |
+| `exclude_tools` | `OPENCODE_MODEL_FALLBACK_EXCLUDE_TOOLS` | single tools to remove by ID; wins over `tools` and `toolsets`                                                                                             |
+| `language`      | `OPENCODE_MODEL_FALLBACK_LANGUAGE`      | the approval prompt's language, such as `ja`                                                                                                               |
+| `max_wait_ms`   | `OPENCODE_MODEL_FALLBACK_MAX_WAIT_MS`   | the longest wait, in milliseconds, OpenCode may ask of a rate limit before it counts as a limit; at least 0, default 10000                                 |
+| `cooldown_ms`   | `OPENCODE_MODEL_FALLBACK_COOLDOWN_MS`   | how long, in milliseconds, a model that hit a limit is passed over when OpenCode gave no wait; at least 1, default 3600000                                 |
+| `state_dir`     | `OPENCODE_MODEL_FALLBACK_STATE_DIR`     | where the plugin keeps its state, the cooldowns included; default `$XDG_STATE_HOME/opencode-model-fallback`, else `~/.local/state/opencode-model-fallback` |
 
 `OPENCODE_MODEL_FALLBACK_GRANT_KEY` is a variable only, never a plugin option.
 Use at least 32 characters, for example from `openssl rand -hex 32`, stored
