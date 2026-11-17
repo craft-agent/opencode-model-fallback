@@ -320,11 +320,19 @@ function grantKey(env: Environment, profile: EntryProfile): Buffer | undefined {
   return Buffer.from(value, "utf8")
 }
 
-/** Where grants are kept unless a setting says: `<XDG_STATE_HOME>/<name>/grants` when that variable is absolute, else under `<home>/.local/state`. */
-function defaultGrantsDir(env: Environment, profile: EntryProfile): string {
+/** The package's own state directory unless a setting says: `<XDG_STATE_HOME>/<name>` when that variable is absolute, else `<home>/.local/state/<name>`. */
+export function defaultStateDir(
+  env: Record<string, string | undefined>,
+  profile: EntryProfile = PROJECT_PROFILE,
+): string {
   const state = env.XDG_STATE_HOME
   const stateHome = state !== undefined && isAbsolute(state) ? state : join(homeOf(env), ".local", "state")
-  return join(stateHome, profile.name, GRANTS_DIR_NAME)
+  return join(stateHome, profile.name)
+}
+
+/** Where grants are kept unless a setting says: `grants` in the state directory. */
+function defaultGrantsDir(env: Environment, profile: EntryProfile): string {
+  return join(defaultStateDir(env, profile), GRANTS_DIR_NAME)
 }
 
 /** The grants' context from the `unattended` and `grants_dir` settings, as parsed (`undefined` when unset), and the environment's key. */

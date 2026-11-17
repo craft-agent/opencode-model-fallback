@@ -13,7 +13,14 @@ export const PROJECT = {
   /** The toolsets on when a setting names none. */
   defaultToolsets: [] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
-  options: {} as Readonly<Record<string, OptionSpec>>,
+  options: {
+    /** The longest wait, in milliseconds, that OpenCode may ask of a rate limit before the model counts as having hit a limit. */
+    max_wait_ms: { type: "number", min: 0 },
+    /** How long, in milliseconds, a model that hit a limit is passed over when OpenCode gave no wait. */
+    cooldown_ms: { type: "number", min: 1 },
+    /** The directory where the plugin keeps its state, the cooldowns included. */
+    state_dir: "path",
+  } as Readonly<Record<string, OptionSpec>>,
   /** Options only the plugin's own features read, from its configuration: they have no flag or environment variable, and the settings accept them without reading their values. */
   pluginOptions: ["routes"] as readonly string[],
   /** The environment variables the tools read besides the settings. */
