@@ -1,6 +1,7 @@
 import type { V2Context, V2Executor, V2ExecutorContext, V2ExecutorResult } from "../types"
 import type { Cooldowns } from "./cooldowns"
 import type { Feature, FeatureApi } from "./feature"
+import { continuedSession, watchChild } from "./launch.moves"
 import { selectStep, type SkippedStep } from "./launch.select"
 import { notice, ownedKey } from "./notice"
 import { withNotices } from "./result"
@@ -82,21 +83,30 @@ function launchOnRoute(
   original: V2Executor,
 ): V2Executor {
   return async (input, context) => {
-    if (typeof input.sessionID === "string" && input.sessionID !== "") return original(input, context)
+    const watch = await watchChild(ctx, input, context, api.state.now)
+    if (continuedSession(input) !== undefined) {
+      const result = await original(input, watch.context)
+      const moved = await watch.report(result)
+      return withNotices(result, moved.lines, moved.metadata)
+    }
     const plan = await planLaunch(ctx, table, cooldowns, input, context)
     context.signal.throwIfAborted?.()
     const lines = api.notices.take()
     const { record } = plan
     let result: V2ExecutorResult
     try {
-      result = await original(plan.input, context)
+      result = await original(plan.input, watch.context)
     } catch (error) {
       // A launch that fails shows no result, so its once-notices wait for the next one.
       for (const line of lines) api.notices.add(line)
       throw error
     }
     if (record) lines.push(noticeOf(record))
-    return withNotices(result, lines, record && { [ownedKey("launch")]: record })
+    const moved = await watch.report(result)
+    return withNotices(result, [...lines, ...moved.lines], {
+      ...(record && { [ownedKey("launch")]: record }),
+      ...moved.metadata,
+    })
   }
 }
 
