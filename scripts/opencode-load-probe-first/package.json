@@ -1,0 +1,8 @@
+{
+  "name": "ci-load-probe-first",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./server.js"
+  }
+}

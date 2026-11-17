@@ -28,6 +28,9 @@ const HOOKS = [
   "no.such.hook",
 ]
 
+/** The array the load check's plugins mark their setups in; they share one process. */
+const ORDER_KEY = Symbol.for("opencode-model-fallback.ci.load-order")
+
 /** How long one call into the host may take before the probe records it as failed. */
 const CALL_TIMEOUT_MS = 5000
 
@@ -50,8 +53,11 @@ export default {
   async setup(ctx) {
     const out = ctx.options?.out
     if (typeof out !== "string") throw new Error("load probe: the out option is missing")
+    const order = (globalThis[ORDER_KEY] ??= [])
+    order.push("probe:start")
     const report = {
       setup: true,
+      order,
       version: ctx.app?.version,
       members: {},
       hooks: {},
