@@ -53,8 +53,8 @@ export type FakeOptions = {
   /** Calls the context does not have. */
   omit?: readonly CallPath[]
   options?: Record<string, unknown>
-  /** What `session.get` gives for a session ID; any other ID is in `FAKE_DIRECTORY` with no model. */
-  sessions?: Record<string, Pick<V2Session, "model" | "location">>
+  /** What `session.get` gives for a session ID, kept as the sessions `FakeContext.sessions` holds; any other ID is in `FAKE_DIRECTORY` with no model. */
+  sessions?: Record<string, Partial<V2Session>>
   /** What `agent.get` gives for an agent ID; any other agent has no model. */
   agents?: Record<string, { model?: V2ModelRef }>
   /** What `model.list` returns. */
@@ -75,6 +75,10 @@ export type FakeContext = {
   /** The names of the hooks disposed, in the order they were. */
   disposed: string[]
   switches: { sessionID: string; model: V2ModelRef }[]
+  /** The sessions `session.get` answers from: `update` sets a session's metadata here, and a test may change one. */
+  sessions: Record<string, Partial<V2Session>>
+  /** Every `session.update` call, in order. */
+  updates: { sessionID: string; metadata: Record<string, unknown> }[]
   tools: Map<string, V2Tool>
   skills: V2Skill[]
   /** Every `tool.transform` call, in order. */
@@ -132,6 +136,8 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   const hooks: FakeHook[] = []
   const disposed: string[] = []
   const switches: FakeContext["switches"] = []
+  const sessions: FakeContext["sessions"] = { ...fake.sessions }
+  const updates: FakeContext["updates"] = []
   const tools = new Map<string, V2Tool>()
   const skills: V2Skill[] = []
   const transforms: FakeTransform[] = []
@@ -163,9 +169,12 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
     model: { list: async () => ({ data: fake.catalog ?? [] }) },
     session: {
       async get({ sessionID }) {
-        return { id: sessionID, location: { directory: FAKE_DIRECTORY }, ...fake.sessions?.[sessionID] }
+        return { id: sessionID, location: { directory: FAKE_DIRECTORY }, ...sessions[sessionID] }
       },
-      async update() {},
+      async update(input) {
+        updates.push(input)
+        sessions[input.sessionID] = { ...sessions[input.sessionID], metadata: input.metadata }
+      },
       async switchModel(input) {
         switches.push(input)
       },
@@ -209,6 +218,8 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
     },
     disposed,
     switches,
+    sessions,
+    updates,
     tools,
     skills,
     transforms,
