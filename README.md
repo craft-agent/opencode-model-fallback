@@ -245,10 +245,41 @@ export default {
 }
 ```
 
-Load it beside the fallback in `opencode.json`; the order does not matter, since
-the fallback looks for an answering plugin at each question. The last plugin to
-register for the RPC wins. The package ships no type declarations for the
-subpath yet.
+Load it beside the fallback in `opencode.json`; for the RPC the order does not
+matter, since the fallback looks for an answering plugin at each question. The
+last plugin to register for the RPC wins. The package ships no type
+declarations for the subpath yet. (A plugin that rewrites retry waits is a
+different matter: see [Beside other plugins](#beside-other-plugins).)
+
+### Remaining usage
+
+The package reads no usage source of its own. A consumer that knows what usage
+is left (a usage plugin, a file, a provider's API) answers `usable` with
+`{ usable: false, reason }` for a step that is spent. To use paid credit only
+after included usage, list the paid step after the included ones in the route:
+a route's order is the whole policy.
+
+## Beside other plugins
+
+OpenCode runs every `retry` hook on the same event in the order the hooks were
+registered, which is the order the plugins are listed, and each may replace
+`event.decision`. List this plugin after any plugin that rewrites retry waits:
+
+```json
+{
+  "plugins": [
+    { "package": "@slkiser/opencode-quota" },
+    { "package": "@craftsamo/opencode-model-fallback@<version>", "options": { "routes": {} } }
+  ]
+}
+```
+
+A plugin such as opencode-quota, whose `waitForQuotaReset` (on by default)
+replaces a limit's decision with a wait for the window's reset, up to five
+hours, must run first. Listed after this plugin, it would turn a move's
+immediate retry, or a child's stop, into that wait. Listed before it, this
+plugin has the last word, and the wait the other plugin set for a spent window
+is read as a limit and makes a good cooldown.
 
 ## Tools and skills
 
