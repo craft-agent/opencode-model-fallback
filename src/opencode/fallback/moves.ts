@@ -1,8 +1,9 @@
 import type { V2Context, V2ModelRef } from "../types"
+import { askUsable } from "./consumer"
 import type { Feature, FeatureApi } from "./feature"
 import type { Limit, RetryEvent } from "./limit"
 import { coolOnLimit } from "./limits"
-import { selectStep } from "./launch.select"
+import { selectAskedStep } from "./launch.select"
 import { withMove, type MoveRecord } from "./moves.record"
 import { modelsEqual, readRoutes, selector, type RouteTable } from "./routes"
 
@@ -22,7 +23,8 @@ function placeOf(steps: readonly V2ModelRef[], model: V2ModelRef): number {
 
 /** Why a session leaves the model it was on, as the record and the notice tell it. */
 function reasonOf(model: V2ModelRef, limit: Limit): string {
-  return `${selector(model)} hit a ${limit.kind} limit`
+  if (limit.kind !== "consumer") return `${selector(model)} hit a ${limit.kind} limit`
+  return `${selector(model)} hit a limit${limit.reason === undefined ? "" : `: ${limit.reason}`}`
 }
 
 /** Appends `record` to the moves in `metadata`, the session's own; a failure is ignored, since the move stands without its record. */
@@ -65,7 +67,12 @@ async function moveOnLimit(
   if (place < 0 || !directory) return
   const catalog = (await ctx.model!.list!({ location: { directory } })).data
   const { cooldowns, now } = api.state
-  const { chosen } = selectStep(steps.slice(place + 1), catalog, (step) => cooldowns.until(step))
+  const { chosen } = await selectAskedStep(
+    steps.slice(place + 1),
+    catalog,
+    (step) => cooldowns.until(step),
+    (step) => askUsable(ctx, agent, step),
+  )
   const reason = reasonOf(model, limit)
   const at = new Date(now()).toISOString()
   if (chosen) {
@@ -101,7 +108,7 @@ export const MOVES: Feature = {
     const { table } = readRoutes(routes)
     await api.hook("retry", async (event) => {
       try {
-        const limit = coolOnLimit(api.state, event)
+        const limit = await coolOnLimit(ctx, api.state, event)
         if (limit) await moveOnLimit(ctx, api, table, event, limit)
       } catch {
         // The fallback never breaks a retry: OpenCode decides as it would have.

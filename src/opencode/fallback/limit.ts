@@ -3,15 +3,19 @@ import type { V2SessionHooks } from "../types"
 /** The event of the `retry` hook: OpenCode's error for a failed model request and its own decision on retrying it. */
 export type RetryEvent = V2SessionHooks["retry"]
 
-/** A limit a retry event shows: a `quota` or a `rate` limit; `waitMs` is the wait OpenCode reported, when it reported one. */
-export type Limit = { kind: "quota" | "rate"; waitMs?: number }
+/**
+ * A limit a retry event shows: a `quota` or a `rate` limit by the package's own
+ * rule, or one a `consumer`'s plugin named, with its `reason`. `waitMs` is the
+ * wait OpenCode reported (for a consumer's, the wait it asked for), when there is one.
+ */
+export type Limit = { kind: "quota" | "rate" | "consumer"; waitMs?: number; reason?: string }
 
 const QUOTA_ERROR = "provider.quota"
 const RATE_LIMIT_ERROR = "provider.rate-limit"
 const TOO_MANY_REQUESTS = 429
 
 /** The wait OpenCode's decision reports: a finite positive delay of a decision to retry, else `undefined`. */
-function reportedDelay(event: RetryEvent): number | undefined {
+export function reportedDelay(event: RetryEvent): number | undefined {
   const decision = event.decision as Partial<{ retry: boolean; delay: unknown }> | undefined
   const delay = decision?.retry === true ? decision.delay : undefined
   return typeof delay === "number" && Number.isFinite(delay) && delay > 0 ? delay : undefined
