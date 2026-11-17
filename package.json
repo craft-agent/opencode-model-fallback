@@ -14,7 +14,8 @@
   "main": "dist/opencode.js",
   "exports": {
     ".": "./dist/opencode.js",
-    "./opencode": "./dist/opencode.js"
+    "./opencode": "./dist/opencode.js",
+    "./rpc": "./dist/rpc.js"
   },
   "files": [
     "dist",
