@@ -1,8 +1,9 @@
 import type { V2Context, V2Executor, V2ExecutorContext, V2ExecutorResult } from "../types"
+import { askUsable } from "./consumer"
 import type { Cooldowns } from "./cooldowns"
 import type { Feature, FeatureApi } from "./feature"
 import { continuedSession, watchChild } from "./launch.moves"
-import { selectStep, type SkippedStep } from "./launch.select"
+import { selectAskedStep, type SkippedStep } from "./launch.select"
 import { notice, ownedKey } from "./notice"
 import { withNotices } from "./result"
 import { modelsEqual, readRoutes, selector, type RouteTable } from "./routes"
@@ -57,7 +58,12 @@ async function planLaunch(
     // The model OpenCode would launch on: the agent's own, else the parent's.
     const current = agentModel ?? parent.model
     const from = current ? selector(current) : null
-    const { chosen, skipped } = selectStep(table[agent]!, catalog, (step) => cooldowns.until(step))
+    const { chosen, skipped } = await selectAskedStep(
+      table[agent]!,
+      catalog,
+      (step) => cooldowns.until(step),
+      (step) => askUsable(ctx, agent, step),
+    )
     if (!chosen) return { input, record: { agent, from, to: null, reason: NO_STEP_USABLE, skipped } }
     if (current && modelsEqual(chosen, current)) return { input }
     const to = selector(chosen)
