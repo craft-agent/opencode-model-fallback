@@ -1,18 +1,26 @@
 import type { V2Context } from "../types"
 import { startFeatures, type Feature, type RunningFeatures } from "./feature"
 import { LAUNCH } from "./launch"
+import { LIMITS } from "./limits"
+import { MOVES } from "./moves"
+import type { FallbackDeps } from "./state"
 import { MIN_OPENCODE_VERSION, meetsMinimum } from "./version"
 
 /** The features of the fallback; each registers nothing until its settings are given, so a plugin with nothing configured changes nothing. */
-export const FEATURES: readonly Feature[] = [LAUNCH]
+export const FEATURES: readonly Feature[] = [LAUNCH, LIMITS, MOVES]
 
 /**
  * Sets up the fallback on an OpenCode that is at least `MIN_OPENCODE_VERSION`
  * (`ctx.app.version`); below it, or when the version cannot be read, nothing
  * is registered and each feature is recorded as unavailable. A call a feature
- * needs that the host lacks keeps that feature off, never the setup.
+ * needs that the host lacks keeps that feature off, never the setup. The
+ * features share one state (settings, clock, cooldowns), made from `deps`.
  */
-export async function setupFallback(ctx: V2Context, features: readonly Feature[] = FEATURES): Promise<RunningFeatures> {
+export async function setupFallback(
+  ctx: V2Context,
+  features: readonly Feature[] = FEATURES,
+  deps: FallbackDeps = {},
+): Promise<RunningFeatures> {
   const version = ctx.app?.version
   if (!meetsMinimum(version)) {
     const reason = `needs OpenCode ${MIN_OPENCODE_VERSION} or later, found ${typeof version === "string" ? version : "no version"}`
@@ -22,5 +30,5 @@ export async function setupFallback(ctx: V2Context, features: readonly Feature[]
       dispose: async () => {},
     }
   }
-  return startFeatures(ctx, features)
+  return startFeatures(ctx, features, deps)
 }

@@ -163,7 +163,7 @@ export type V2Context = {
     id: string
     methods: Record<string, object>
     events: Record<string, object>
-  }) => Record<string, ((input: unknown) => Promise<unknown>) | undefined>
+  }) => Record<string, ((input: unknown, options?: { signal?: AbortSignal }) => Promise<unknown>) | undefined>
   agent?: {
     get?(input: { agentID: string; location: { directory: string } }): Promise<{ data: { model?: V2ModelRef } }>
   }

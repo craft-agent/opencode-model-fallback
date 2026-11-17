@@ -6,6 +6,6 @@ await build({
   format: "esm",
   target: "node24",
   logLevel: "info",
-  entryPoints: ["src/opencode/index.ts"],
-  outfile: "dist/opencode.js",
+  entryPoints: { opencode: "src/opencode/index.ts", rpc: "src/opencode/fallback/rpc.ts" },
+  outdir: "dist",
 })

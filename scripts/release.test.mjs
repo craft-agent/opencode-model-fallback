@@ -56,6 +56,16 @@ describe("package files", () => {
     expect(isPacked(path, pkg.files)).toBe(true)
   })
 
+  test("every export is a packed build the release checks the tarball for", () => {
+    const workflow = readFileSync(join(ROOT, ".github/workflows/release-publish.yml"), "utf8")
+    const built = workflow.match(/built=\(([^)]*)\)/)?.[1].split(/\s+/)
+    expect(Object.keys(pkg.exports)).toContain("./rpc")
+    for (const target of Object.values(pkg.exports)) {
+      expect(isPacked(target.replace(/^\.\//, ""), pkg.files)).toBe(true)
+      expect(built).toContain(target.replace(/^\.\//, ""))
+    }
+  })
+
   test("the package ships no MCP server and no registry name", () => {
     expect(pkg.bin).toBeUndefined()
     expect(pkg.mcpName).toBeUndefined()

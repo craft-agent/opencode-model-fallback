@@ -1,6 +1,9 @@
 import type { V2Context, V2Executor, V2ExecutorContext, V2ExecutorResult } from "../types"
+import { askUsable } from "./consumer"
+import type { Cooldowns } from "./cooldowns"
 import type { Feature, FeatureApi } from "./feature"
-import { selectStep, type SkippedStep } from "./launch.select"
+import { continuedSession, watchChild } from "./launch.moves"
+import { selectAskedStep, type SkippedStep } from "./launch.select"
 import { notice, ownedKey } from "./notice"
 import { withNotices } from "./result"
 import { modelsEqual, readRoutes, selector, type RouteTable } from "./routes"
@@ -38,6 +41,7 @@ function noticeOf(record: LaunchRecord): string {
 async function planLaunch(
   ctx: V2Context,
   table: RouteTable,
+  cooldowns: Cooldowns,
   input: Record<string, unknown>,
   context: V2ExecutorContext,
 ): Promise<LaunchPlan> {
@@ -54,7 +58,12 @@ async function planLaunch(
     // The model OpenCode would launch on: the agent's own, else the parent's.
     const current = agentModel ?? parent.model
     const from = current ? selector(current) : null
-    const { chosen, skipped } = selectStep(table[agent]!, catalog)
+    const { chosen, skipped } = await selectAskedStep(
+      table[agent]!,
+      catalog,
+      (step) => cooldowns.until(step),
+      (step) => askUsable(ctx, agent, step),
+    )
     if (!chosen) return { input, record: { agent, from, to: null, reason: NO_STEP_USABLE, skipped } }
     if (current && modelsEqual(chosen, current)) return { input }
     const to = selector(chosen)
@@ -72,23 +81,38 @@ async function planLaunch(
 }
 
 /** The `subagent` executor of the built-in tool, launching a routed agent on its route. */
-function launchOnRoute(ctx: V2Context, api: FeatureApi, table: RouteTable, original: V2Executor): V2Executor {
+function launchOnRoute(
+  ctx: V2Context,
+  api: FeatureApi,
+  table: RouteTable,
+  cooldowns: Cooldowns,
+  original: V2Executor,
+): V2Executor {
   return async (input, context) => {
-    if (typeof input.sessionID === "string" && input.sessionID !== "") return original(input, context)
-    const plan = await planLaunch(ctx, table, input, context)
+    const watch = await watchChild(ctx, input, context, api.state.now)
+    if (continuedSession(input) !== undefined) {
+      const result = await original(input, watch.context)
+      const moved = await watch.report(result)
+      return withNotices(result, moved.lines, moved.metadata)
+    }
+    const plan = await planLaunch(ctx, table, cooldowns, input, context)
     context.signal.throwIfAborted?.()
     const lines = api.notices.take()
     const { record } = plan
     let result: V2ExecutorResult
     try {
-      result = await original(plan.input, context)
+      result = await original(plan.input, watch.context)
     } catch (error) {
       // A launch that fails shows no result, so its once-notices wait for the next one.
       for (const line of lines) api.notices.add(line)
       throw error
     }
     if (record) lines.push(noticeOf(record))
-    return withNotices(result, lines, record && { [ownedKey("launch")]: record })
+    const moved = await watch.report(result)
+    return withNotices(result, [...lines, ...moved.lines], {
+      ...(record && { [ownedKey("launch")]: record }),
+      ...moved.metadata,
+    })
   }
 }
 
@@ -101,13 +125,14 @@ export const LAUNCH: Feature = {
     const routes = ctx.options?.routes
     if (routes === undefined) return
     const { table, problems } = readRoutes(routes)
+    const { cooldowns } = api.state
     api.track(
       await ctx.tool.transform((editor) => {
         if (!editor.get?.(SUBAGENT_ID) || typeof editor.update !== "function") {
           throw new Error("the built-in subagent tool cannot be wrapped")
         }
         editor.update(SUBAGENT_ID, (tool) => {
-          tool.execute = launchOnRoute(ctx, api, table, tool.execute)
+          tool.execute = launchOnRoute(ctx, api, table, cooldowns, tool.execute)
         })
       }),
     )

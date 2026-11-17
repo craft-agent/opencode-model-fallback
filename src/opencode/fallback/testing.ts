@@ -1,5 +1,6 @@
 import type { CallPath } from "./feature"
 import { parseSelector } from "./routes"
+import type { STEPS_RPC } from "./rpc"
 import { MIN_OPENCODE_VERSION } from "./version"
 import type {
   Registration,
@@ -53,8 +54,8 @@ export type FakeOptions = {
   /** Calls the context does not have. */
   omit?: readonly CallPath[]
   options?: Record<string, unknown>
-  /** What `session.get` gives for a session ID; any other ID is in `FAKE_DIRECTORY` with no model. */
-  sessions?: Record<string, Pick<V2Session, "model" | "location">>
+  /** What `session.get` gives for a session ID, kept as the sessions `FakeContext.sessions` holds; any other ID is in `FAKE_DIRECTORY` with no model. */
+  sessions?: Record<string, Partial<V2Session>>
   /** What `agent.get` gives for an agent ID; any other agent has no model. */
   agents?: Record<string, { model?: V2ModelRef }>
   /** What `model.list` returns. */
@@ -63,20 +64,39 @@ export type FakeOptions = {
   subagent?: V2Executor
   /** The tool editor members a host lacks. */
   omitEditor?: readonly ("get" | "update")[]
+  /** What a consumer's plugin registered for `STEPS_RPC`, by question; a question with no handler rejects as `rpc.unavailable`, as OpenCode does for a definition nobody registered. */
+  rpc?: Partial<Record<FakeRpcQuestion, FakeRpcHandler>>
 }
+
+/** The questions the fallback puts to a consumer. */
+type FakeRpcQuestion = keyof typeof STEPS_RPC.methods
+
+/** A fake consumer's handler: it answers, throws or never settles as a test needs. */
+export type FakeRpcHandler = (input: unknown, options: { signal?: AbortSignal }) => unknown
+
+/** One question the fallback put over the fake's RPC. */
+export type FakeRpcCall = { method: string; input: unknown; signal?: AbortSignal }
 
 /** What `fakeContext` gives back: the context and what the plugin did to it. */
 export type FakeContext = {
   ctx: V2Context
   /** Every hook the fake took, in order. */
   hooks: FakeHook[]
+  /** Passes `event` to the handlers taken for `name` and not disposed, in the order they were taken, as OpenCode does. */
+  fire<Name extends V2HookName>(name: Name, event: V2SessionHooks[Name]): Promise<void>
   /** The names of the hooks disposed, in the order they were. */
   disposed: string[]
   switches: { sessionID: string; model: V2ModelRef }[]
+  /** The sessions `session.get` answers from: `update` sets a session's metadata here, and a test may change one. */
+  sessions: Record<string, Partial<V2Session>>
+  /** Every `session.update` call, in order. */
+  updates: { sessionID: string; metadata: Record<string, unknown> }[]
   tools: Map<string, V2Tool>
   skills: V2Skill[]
   /** Every `tool.transform` call, in order. */
   transforms: FakeTransform[]
+  /** Every question put over the RPC, in order, answered or not. */
+  rpcCalls: FakeRpcCall[]
   subagent: {
     /** The calls that reached the original executor. */
     calls: SubagentCall[]
@@ -130,10 +150,13 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   const hooks: FakeHook[] = []
   const disposed: string[] = []
   const switches: FakeContext["switches"] = []
+  const sessions: FakeContext["sessions"] = { ...fake.sessions }
+  const updates: FakeContext["updates"] = []
   const tools = new Map<string, V2Tool>()
   const skills: V2Skill[] = []
   const transforms: FakeTransform[] = []
   const calls: SubagentCall[] = []
+  const rpcCalls: FakeRpcCall[] = []
   const original: V2Executor = async (input, context) => {
     calls.push({ input, context })
     return fake.subagent ? fake.subagent(input, context) : SUBAGENT_RESULT
@@ -156,14 +179,28 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   const ctx: V2Context = {
     ...(fake.version === null ? {} : { app: { version: fake.version ?? MIN_OPENCODE_VERSION } }),
     options: fake.options,
-    rpc: () => ({}),
+    rpc: (definition) =>
+      Object.fromEntries(
+        Object.keys(definition.methods).map((method) => [
+          method,
+          async (input: unknown, options?: { signal?: AbortSignal }) => {
+            rpcCalls.push({ method, input, signal: options?.signal })
+            const handler = fake.rpc?.[method as FakeRpcQuestion]
+            if (!handler) throw Object.assign(new Error("no plugin answers"), { type: "rpc.unavailable" })
+            return handler(input, { signal: options?.signal })
+          },
+        ]),
+      ),
     agent: { get: async ({ agentID }) => ({ data: fake.agents?.[agentID] ?? {} }) },
     model: { list: async () => ({ data: fake.catalog ?? [] }) },
     session: {
       async get({ sessionID }) {
-        return { id: sessionID, location: { directory: FAKE_DIRECTORY }, ...fake.sessions?.[sessionID] }
+        return { id: sessionID, location: { directory: FAKE_DIRECTORY }, ...sessions[sessionID] }
       },
-      async update() {},
+      async update(input) {
+        updates.push(input)
+        sessions[input.sessionID] = { ...sessions[input.sessionID], metadata: input.metadata }
+      },
       async switchModel(input) {
         switches.push(input)
       },
@@ -198,11 +235,21 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   return {
     ctx,
     hooks,
+    async fire(name, event) {
+      for (const hook of hooks) {
+        if (hook.name === name && !hook.disposed) {
+          await (hook.handler as (event: unknown) => void | Promise<void>)(event)
+        }
+      }
+    },
     disposed,
     switches,
+    sessions,
+    updates,
     tools,
     skills,
     transforms,
+    rpcCalls,
     subagent: { calls, execute: (input, context) => current(input, context) },
   }
 }
