@@ -9,6 +9,7 @@ export type Selection = { chosen?: V2ModelRef; skipped: SkippedStep[] }
 
 const NOT_IN_CATALOG = "is not in OpenCode's models"
 const CANNOT_RUN = "cannot run a subagent"
+const COOLING_DOWN = "is cooling down until"
 
 /**
  * Why a step cannot take a launch, or `undefined` when it can. `catalog` is what
@@ -26,11 +27,23 @@ export function unusableReason(step: V2ModelRef, catalog: readonly V2CatalogMode
   return undefined
 }
 
-/** The first step of `steps` that can take a launch, with the steps before it that cannot. */
-export function selectStep(steps: readonly V2ModelRef[], catalog: readonly V2CatalogModel[]): Selection {
+/** When a model is usable again, or `undefined` when it is not cooling down. */
+export type CoolingUntil = (model: V2ModelRef) => number | undefined
+
+/** The clause for a step whose model is cooling down until `end` (epoch milliseconds, never past the latest date), or `undefined` when `end` is. */
+function coolingReason(end: number | undefined): string | undefined {
+  return end === undefined ? undefined : `${COOLING_DOWN} ${new Date(end).toISOString()}`
+}
+
+/** The first step of `steps` that can take a launch, with the steps before it that cannot. A step whose model is cooling down, as `coolingUntil` says, cannot. */
+export function selectStep(
+  steps: readonly V2ModelRef[],
+  catalog: readonly V2CatalogModel[],
+  coolingUntil: CoolingUntil = () => undefined,
+): Selection {
   const skipped: SkippedStep[] = []
   for (const step of steps) {
-    const reason = unusableReason(step, catalog)
+    const reason = unusableReason(step, catalog) ?? coolingReason(coolingUntil(step))
     if (reason === undefined) return { chosen: step, skipped }
     skipped.push({ model: selector(step), reason })
   }

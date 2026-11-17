@@ -1,4 +1,5 @@
 import type { V2Context, V2Executor, V2ExecutorContext, V2ExecutorResult } from "../types"
+import type { Cooldowns } from "./cooldowns"
 import type { Feature, FeatureApi } from "./feature"
 import { selectStep, type SkippedStep } from "./launch.select"
 import { notice, ownedKey } from "./notice"
@@ -38,6 +39,7 @@ function noticeOf(record: LaunchRecord): string {
 async function planLaunch(
   ctx: V2Context,
   table: RouteTable,
+  cooldowns: Cooldowns,
   input: Record<string, unknown>,
   context: V2ExecutorContext,
 ): Promise<LaunchPlan> {
@@ -54,7 +56,7 @@ async function planLaunch(
     // The model OpenCode would launch on: the agent's own, else the parent's.
     const current = agentModel ?? parent.model
     const from = current ? selector(current) : null
-    const { chosen, skipped } = selectStep(table[agent]!, catalog)
+    const { chosen, skipped } = selectStep(table[agent]!, catalog, (step) => cooldowns.until(step))
     if (!chosen) return { input, record: { agent, from, to: null, reason: NO_STEP_USABLE, skipped } }
     if (current && modelsEqual(chosen, current)) return { input }
     const to = selector(chosen)
@@ -72,10 +74,16 @@ async function planLaunch(
 }
 
 /** The `subagent` executor of the built-in tool, launching a routed agent on its route. */
-function launchOnRoute(ctx: V2Context, api: FeatureApi, table: RouteTable, original: V2Executor): V2Executor {
+function launchOnRoute(
+  ctx: V2Context,
+  api: FeatureApi,
+  table: RouteTable,
+  cooldowns: Cooldowns,
+  original: V2Executor,
+): V2Executor {
   return async (input, context) => {
     if (typeof input.sessionID === "string" && input.sessionID !== "") return original(input, context)
-    const plan = await planLaunch(ctx, table, input, context)
+    const plan = await planLaunch(ctx, table, cooldowns, input, context)
     context.signal.throwIfAborted?.()
     const lines = api.notices.take()
     const { record } = plan
@@ -101,13 +109,14 @@ export const LAUNCH: Feature = {
     const routes = ctx.options?.routes
     if (routes === undefined) return
     const { table, problems } = readRoutes(routes)
+    const { cooldowns } = api.state
     api.track(
       await ctx.tool.transform((editor) => {
         if (!editor.get?.(SUBAGENT_ID) || typeof editor.update !== "function") {
           throw new Error("the built-in subagent tool cannot be wrapped")
         }
         editor.update(SUBAGENT_ID, (tool) => {
-          tool.execute = launchOnRoute(ctx, api, table, tool.execute)
+          tool.execute = launchOnRoute(ctx, api, table, cooldowns, tool.execute)
         })
       }),
     )
