@@ -175,6 +175,81 @@ The moves need `session.switchModel`, `session.update` and `model.list` of
 OpenCode. A host without one keeps moves off, says so once, and still records
 cooldowns.
 
+## Plugging in your own judgment
+
+Your own OpenCode plugin can answer two questions the fallback asks, over
+OpenCode's plugin RPC. Register handlers against `STEPS_RPC`, which the package
+exports from `@craftsamo/opencode-model-fallback/rpc` (the same schemas the
+fallback asks with):
+
+- `usable({ agent, model })` → `{ usable, reason? }`: may this agent run on this
+  step now? `model` is the step, `provider/model#variant`. The fallback asks it
+  of a step only after its own checks passed it (OpenCode lists the model, it is
+  not cooling down), in the order of the route, for a launch and for a move,
+  and stops at the first step you do not refuse, so it asks at most once for
+  each candidate. `{ usable: false }` passes the step over, for that launch or
+  move only, as `a/x is unusable: <reason>` in the notice (`a/x is unusable`
+  without a reason).
+- `limit({ agent, model, error, wait_ms? })` → `{ limit, wait_ms?, reason? }`:
+  is this error a limit? It is asked of a failed request the fallback's own
+  rule does not take for a limit (see [Cooldowns](#cooldowns)); a quota or rate
+  limit it found itself is never put to you. `error` is
+  `{ type, status?, message, body? }` as OpenCode reported it, and `wait_ms` is
+  the wait OpenCode's own decision gave, when it will retry after one; `agent`
+  is empty when OpenCode names none for the retry. `{ limit: true }` cools the
+  model down for `wait_ms` (the `cooldown_ms` setting when you give none, or
+  zero) and moves a routed session on, with `a/x hit a limit: <reason>` as the
+  move's reason (`a/x hit a limit` without one). One retry is asked once, even
+  though both the cooldown and the move read it.
+
+No answer means the fallback decides as it would alone: no plugin registered, a
+handler that throws, an answer that does not fit the schema, a host without
+RPC, or no answer within 2 seconds each count as one. Your plugin can never
+break a launch or a move; the cost of a slow handler is up to 2 seconds for each
+question. A reason is shown as one line of at most 200 characters.
+
+An example plugin that passes over a step whose provider has an empty balance,
+and takes an "insufficient balance" error for a limit:
+
+```js
+import { readFile } from "node:fs/promises"
+import { STEPS_RPC } from "@craftsamo/opencode-model-fallback/rpc"
+
+const HOUR_MS = 3_600_000
+
+/** The balance left for a provider, from a file this plugin's owner keeps up to date. */
+async function balanceOf(provider) {
+  try {
+    return Number(await readFile(`/var/lib/balances/${provider}`, "utf8"))
+  } catch {
+    return undefined
+  }
+}
+
+export default {
+  id: "balance-check",
+  async setup(ctx) {
+    const registration = await ctx.rpc.register(STEPS_RPC, {
+      async usable({ model }) {
+        const balance = await balanceOf(model.split("/")[0])
+        return balance === 0 ? { usable: false, reason: "balance is empty" } : { usable: true }
+      },
+      async limit({ error }) {
+        return /insufficient balance/i.test(error.message)
+          ? { limit: true, wait_ms: HOUR_MS, reason: "balance is empty" }
+          : { limit: false }
+      },
+    })
+    return () => registration.dispose()
+  },
+}
+```
+
+Load it beside the fallback in `opencode.json`; the order does not matter, since
+the fallback looks for an answering plugin at each question. The last plugin to
+register for the RPC wins. The package ships no type declarations for the
+subpath yet.
+
 ## Tools and skills
 
 The plugin registers no tool by default. Each toolset comes with a skill that
@@ -341,7 +416,9 @@ service is restarted in that environment (`opencode service restart`).
 - `src/tools.ts` — the list of every tool, which the plugin registers.
 - `src/words.ts` — the translations of the tools' words, per language, which
   the plugin uses in its approval prompts.
-- `src/opencode/` — the OpenCode plugin, built to `dist/opencode.js`.
+- `src/opencode/` — the OpenCode plugin, built to `dist/opencode.js`; its
+  `fallback/rpc.ts` is the RPC consumers register against, built to
+  `dist/rpc.js`.
 - `skills/` — one skill per toolset, `skills/<name>/SKILL.md`, which the plugin
   registers only for the toolsets that are on.
 

@@ -591,6 +591,26 @@ not used.
 - **Notices are English and not translated**: the reader is the agent that
   receives the result, not a person choosing a language.
 
+### A consumer's say
+
+- **A consumer's plugin may answer two questions, over OpenCode's plugin RPC**
+  `opencode-model-fallback.steps` (`usable` and `limit`), so a setup's own
+  knowledge (a balance, a schedule) stays in its own plugin, not in settings.
+  The definition is `src/opencode/fallback/rpc.ts`, built to `dist/rpc.js`
+  and exported as `@craftsamo/opencode-model-fallback/rpc` with no imports and
+  hand-written Standard Schemas, so a consumer registers against the same schemas
+  without taking the package's code or a schema library.
+- **No answer is the package alone.** A host without RPC, no plugin registered
+  (`rpc.unavailable`), a call that throws, an answer off the schema and no
+  answer within 2 seconds all leave the decision to the package's own rules; a
+  consumer can never break a launch or a move. RPC is probed where it is used,
+  not declared as a call a feature needs, since nothing is off without it.
+- **A consumer is asked after the package's own rules, never before.** `usable`
+  only of a step that passed the catalog and cooldown checks, in route order,
+  until one is usable; `limit` only of an error the package's own rule does not
+  take for a limit, once per retry event. A consumer can pass a step over or
+  name a limit; it cannot make a step usable that the package's checks refused.
+
 ### OpenCode versions
 
 - **The plugin runs on any OpenCode from a minimum version on.** Below it,

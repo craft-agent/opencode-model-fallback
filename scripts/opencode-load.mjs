@@ -42,12 +42,19 @@ const REQUIRED_MEMBERS = {
   "agent.get": "function",
   "model.list": "function",
 }
+/** What the probe's handlers answer, as a client reads it back through the host. */
+const RPC_ANSWERS = {
+  usable: { usable: false, reason: "probe" },
+  limit: { limit: true, wait_ms: 1 },
+}
 /** Session hooks the plugin registers. OpenCode resolves a registration even for an unknown name. */
 const REQUIRED_HOOKS = ["retry", "http.request", "context"]
 
 const manifest = JSON.parse(readFileSync(join(PACKAGE, "package.json"), "utf8"))
 const entry = pathToFileURL(join(PACKAGE, manifest.exports?.["."] ?? manifest.main)).href
 const { default: plugin } = await import(entry)
+/** The built `rpc.js` the probe registers handlers from, as the package exports it. */
+const RPC_ENTRY = join(PACKAGE, manifest.exports["./rpc"])
 
 rmSync(SCRATCH, { recursive: true, force: true })
 for (const dir of [SHIM, WORK, join(HOME, "tmp")]) mkdirSync(dir, { recursive: true })
@@ -60,7 +67,7 @@ writeFileSync(
     {
       plugins: [
         { package: SHIM, options: PLUGIN_OPTIONS },
-        { package: PROBE, options: { out: OUT } },
+        { package: PROBE, options: { out: OUT, rpc: RPC_ENTRY } },
       ],
     },
     null,
@@ -170,6 +177,18 @@ try {
   }
   if (report?.tools?.subagentInTransform !== "object")
     failures.push("ctx.tool.transform does not see the subagent tool")
+  for (const [name, expected] of Object.entries(RPC_ANSWERS)) {
+    const answer = report?.rpc?.[name]
+    if (JSON.stringify(answer?.value) !== JSON.stringify(expected))
+      failures.push(
+        `the RPC ${name} answered ${JSON.stringify(answer ?? report?.rpc)}, not ${JSON.stringify(expected)}`,
+      )
+  }
+  const none = report?.rpc?.unavailable
+  if (none?.value !== undefined || none?.error === undefined)
+    failures.push(`a call to an unregistered RPC did not reject: ${JSON.stringify(none)}`)
+  else console.log(`RPC: a call with no plugin registered rejects with type ${none.type}.`)
+  if (report?.rpc?.error !== undefined) failures.push(`the RPC probe failed: ${report.rpc.error}`)
   const loaded = plugins.find((item) => item.id === plugin.id)
   if (!loaded) failures.push(`OpenCode does not list the plugin ${plugin.id}`)
   else if (loaded.state?.status !== "active")

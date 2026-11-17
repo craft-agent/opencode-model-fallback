@@ -6,6 +6,7 @@
  * `server.*` or `index.*` file and ignores `exports`.
  */
 import { writeFileSync } from "node:fs"
+import { pathToFileURL } from "node:url"
 
 const MEMBERS = [
   "app.version",
@@ -96,7 +97,55 @@ export default {
       report.tools = { error: message(error) }
     }
 
+    report.rpc = await probeRpc(ctx, ctx.options?.rpc)
     report.done = true
     save()
   },
+}
+
+/**
+ * Proves an RPC round trip on this OpenCode: registers handlers for the
+ * built `rpc.js` the `rpc` option names, asks them through `ctx.rpc`, and asks
+ * a definition nobody registered, which must reject. Each answer is recorded as
+ * the host returned it, or as the error that took its place.
+ */
+async function probeRpc(ctx, path) {
+  const rpc = {}
+  let registration
+  try {
+    const { STEPS_RPC } = await import(pathToFileURL(path).href)
+    registration = await within(
+      ctx.rpc.register(STEPS_RPC, {
+        usable: async () => ({ usable: false, reason: "probe" }),
+        limit: async () => ({ limit: true, wait_ms: 1 }),
+      }),
+      CALL_TIMEOUT_MS,
+    )
+    // The calls are made as the plugin under test makes them: with an abort signal.
+    const { signal } = new AbortController()
+    const client = ctx.rpc(STEPS_RPC)
+    const step = { agent: "probe", model: "a/x#high" }
+    const error = { type: "ci.probe", message: "probe" }
+    rpc.usable = await attempt(() => client.usable(step, { signal }))
+    rpc.limit = await attempt(() => client.limit({ ...step, error, wait_ms: 5 }, { signal }))
+    const none = ctx.rpc({ ...STEPS_RPC, id: "ci.load-probe.none" })
+    rpc.unavailable = await attempt(() => none.usable(step, { signal }))
+  } catch (error) {
+    rpc.error = message(error)
+  }
+  try {
+    await registration?.dispose?.()
+  } catch (error) {
+    rpc.disposeError = message(error)
+  }
+  return rpc
+}
+
+/** What `call` resolves to as `{ value }`, or the error it rejects with as `{ type, error }`. */
+async function attempt(call) {
+  try {
+    return { value: await within(call(), CALL_TIMEOUT_MS) }
+  } catch (error) {
+    return { type: error?.type, error: message(error) }
+  }
 }
