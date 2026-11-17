@@ -1,5 +1,6 @@
 import type { CallPath } from "./feature"
 import { parseSelector } from "./routes"
+import type { STEPS_RPC } from "./rpc"
 import { MIN_OPENCODE_VERSION } from "./version"
 import type {
   Registration,
@@ -63,7 +64,18 @@ export type FakeOptions = {
   subagent?: V2Executor
   /** The tool editor members a host lacks. */
   omitEditor?: readonly ("get" | "update")[]
+  /** What a consumer's plugin registered for `STEPS_RPC`, by question; a question with no handler rejects as `rpc.unavailable`, as OpenCode does for a definition nobody registered. */
+  rpc?: Partial<Record<FakeRpcQuestion, FakeRpcHandler>>
 }
+
+/** The questions the fallback puts to a consumer. */
+type FakeRpcQuestion = keyof typeof STEPS_RPC.methods
+
+/** A fake consumer's handler: it answers, throws or never settles as a test needs. */
+export type FakeRpcHandler = (input: unknown, options: { signal?: AbortSignal }) => unknown
+
+/** One question the fallback put over the fake's RPC. */
+export type FakeRpcCall = { method: string; input: unknown; signal?: AbortSignal }
 
 /** What `fakeContext` gives back: the context and what the plugin did to it. */
 export type FakeContext = {
@@ -83,6 +95,8 @@ export type FakeContext = {
   skills: V2Skill[]
   /** Every `tool.transform` call, in order. */
   transforms: FakeTransform[]
+  /** Every question put over the RPC, in order, answered or not. */
+  rpcCalls: FakeRpcCall[]
   subagent: {
     /** The calls that reached the original executor. */
     calls: SubagentCall[]
@@ -142,6 +156,7 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   const skills: V2Skill[] = []
   const transforms: FakeTransform[] = []
   const calls: SubagentCall[] = []
+  const rpcCalls: FakeRpcCall[] = []
   const original: V2Executor = async (input, context) => {
     calls.push({ input, context })
     return fake.subagent ? fake.subagent(input, context) : SUBAGENT_RESULT
@@ -164,7 +179,18 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   const ctx: V2Context = {
     ...(fake.version === null ? {} : { app: { version: fake.version ?? MIN_OPENCODE_VERSION } }),
     options: fake.options,
-    rpc: () => ({}),
+    rpc: (definition) =>
+      Object.fromEntries(
+        Object.keys(definition.methods).map((method) => [
+          method,
+          async (input: unknown, options?: { signal?: AbortSignal }) => {
+            rpcCalls.push({ method, input, signal: options?.signal })
+            const handler = fake.rpc?.[method as FakeRpcQuestion]
+            if (!handler) throw Object.assign(new Error("no plugin answers"), { type: "rpc.unavailable" })
+            return handler(input, { signal: options?.signal })
+          },
+        ]),
+      ),
     agent: { get: async ({ agentID }) => ({ data: fake.agents?.[agentID] ?? {} }) },
     model: { list: async () => ({ data: fake.catalog ?? [] }) },
     session: {
@@ -223,6 +249,7 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
     tools,
     skills,
     transforms,
+    rpcCalls,
     subagent: { calls, execute: (input, context) => current(input, context) },
   }
 }
