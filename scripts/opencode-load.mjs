@@ -27,6 +27,8 @@ const OUT = join(SCRATCH, "probe.json")
 const DEADLINE_MS = Number(process.env.LOAD_TIMEOUT_MS ?? 60_000)
 /** How long the server gets to exit after SIGTERM before SIGKILL. */
 const STOP_GRACE_MS = 5000
+/** The options the plugin under test gets: a route, so the launch feature wraps the subagent tool. */
+const PLUGIN_OPTIONS = { routes: { "load-check": ["load-check/model"] } }
 /** The plugin states OpenCode leaves once a setup has run. */
 const SETTLED = new Set(["active", "failed"])
 
@@ -54,7 +56,16 @@ for (const dir of [SHIM, WORK, join(HOME, "tmp")]) mkdirSync(dir, { recursive: t
 writeFileSync(join(SHIM, "index.js"), `export { default } from ${JSON.stringify(entry)}\n`)
 writeFileSync(
   join(WORK, "opencode.json"),
-  JSON.stringify({ plugins: [SHIM, { package: PROBE, options: { out: OUT } }] }, null, 2),
+  JSON.stringify(
+    {
+      plugins: [
+        { package: SHIM, options: PLUGIN_OPTIONS },
+        { package: PROBE, options: { out: OUT } },
+      ],
+    },
+    null,
+    2,
+  ),
 )
 
 const password = randomBytes(24).toString("hex")
