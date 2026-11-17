@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { Feature } from "./feature"
+import { LAUNCH } from "./launch"
 import { FEATURES, setupFallback } from "./setup"
 import { fakeContext } from "./testing"
 
@@ -11,14 +12,14 @@ const FEATURE: Feature = {
 }
 
 describe("setupFallback", () => {
-  test("has no features yet, so it registers nothing", async () => {
-    expect(FEATURES).toEqual([])
-    const { ctx, hooks, tools, skills } = fakeContext()
+  test("has the launch feature, which registers nothing with nothing configured", async () => {
+    expect(FEATURES).toEqual([LAUNCH])
+    const { ctx, hooks, tools, skills, transforms } = fakeContext()
     const setup = await setupFallback(ctx)
-    expect(setup.running).toEqual([])
+    expect(setup.running).toEqual(["launch"])
     expect(setup.unavailable).toEqual([])
     await setup.dispose()
-    expect([hooks, [...tools], skills]).toEqual([[], [], []])
+    expect([hooks, [...tools], skills, transforms]).toEqual([[], [], [], []])
   })
 
   test("starts its features on the minimum version and later", async () => {
