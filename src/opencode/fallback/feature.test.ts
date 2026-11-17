@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { Feature } from "./feature"
+import type { Feature, FeatureApi } from "./feature"
 import { startFeatures } from "./feature"
 import { fakeContext } from "./testing"
 
@@ -177,6 +177,17 @@ describe("startFeatures", () => {
     const queue = seen[0] as { take(): string[] }
     expect(queue.take()).toEqual(["[from a]", "[from b]"])
     expect(queue.take()).toEqual([])
+  })
+
+  test("gives every feature one shared state, made on first use from what the setup supplied", async () => {
+    const { ctx } = fakeContext({ options: { cooldown_ms: 7_000 } })
+    const seen: FeatureApi["state"][] = []
+    const spy = (name: string) => feature(name, [], { register: async (_ctx, api) => void seen.push(api.state) })
+    await startFeatures(ctx, [spy("a"), spy("b")], { now: () => 42, env: { HOME: "/home/tester" }, persist: false })
+    expect(seen[1]).toBe(seen[0]!)
+    expect(seen[0]!.now()).toBe(42)
+    expect(seen[0]!.settings.cooldownMs).toBe(7_000)
+    expect(seen[0]!.cooldowns).toBe(seen[1]!.cooldowns)
   })
 
   test("names each feature that stayed off in the once-only notices, after the features started", async () => {

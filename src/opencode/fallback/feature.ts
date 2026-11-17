@@ -1,5 +1,6 @@
 import type { Registration, V2Context, V2HookName, V2SessionHooks } from "../types"
 import { createOnceNotices, notice, type OnceNotices } from "./notice"
+import { createFallbackState, type FallbackDeps, type FallbackState } from "./state"
 
 /** A call of the context a feature may need; the runner checks that each is a function before the feature starts. */
 export type CallPath =
@@ -16,6 +17,8 @@ export type FeatureApi = {
   track(registration: Registration | void): void
   /** The notices owed once, shared by every feature of a setup: a feature adds its own and takes them all when it first speaks to the reader. The features that stayed off are added after all have started. */
   readonly notices: OnceNotices
+  /** The settings, the clock and the cooldowns shared by every feature of a setup, made on first use. */
+  readonly state: FallbackState
 }
 
 /** One part of the fallback, with the calls and hooks it needs; it stays off when it cannot have them, the others run. */
@@ -80,12 +83,18 @@ function reasonOf(error: unknown): string {
  * the others run. OpenCode accepts any hook name, so a failed registration
  * only catches a host that throws, not a hook that does not exist. Each
  * feature left off is named in the once-only notices (`FeatureApi.notices`).
+ * The features share one `FeatureApi.state`, made from `deps`.
  */
-export async function startFeatures(ctx: V2Context, features: readonly Feature[]): Promise<RunningFeatures> {
+export async function startFeatures(
+  ctx: V2Context,
+  features: readonly Feature[],
+  deps: FallbackDeps = {},
+): Promise<RunningFeatures> {
   const registrations: Registration[] = []
   const running: string[] = []
   const unavailable: UnavailableFeature[] = []
   const notices = createOnceNotices()
+  const state = createFallbackState(ctx, notices, deps)
 
   for (const feature of features) {
     const missing = missingCall(ctx, feature)
@@ -112,6 +121,7 @@ export async function startFeatures(ctx: V2Context, features: readonly Feature[]
         if (isRegistration(registration)) own.push(registration)
       },
       notices,
+      state,
     }
 
     try {

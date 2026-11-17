@@ -70,6 +70,8 @@ export type FakeContext = {
   ctx: V2Context
   /** Every hook the fake took, in order. */
   hooks: FakeHook[]
+  /** Passes `event` to the handlers taken for `name` and not disposed, in the order they were taken, as OpenCode does. */
+  fire<Name extends V2HookName>(name: Name, event: V2SessionHooks[Name]): Promise<void>
   /** The names of the hooks disposed, in the order they were. */
   disposed: string[]
   switches: { sessionID: string; model: V2ModelRef }[]
@@ -198,6 +200,13 @@ export function fakeContext(fake: FakeOptions = {}): FakeContext {
   return {
     ctx,
     hooks,
+    async fire(name, event) {
+      for (const hook of hooks) {
+        if (hook.name === name && !hook.disposed) {
+          await (hook.handler as (event: unknown) => void | Promise<void>)(event)
+        }
+      }
+    },
     disposed,
     switches,
     tools,
