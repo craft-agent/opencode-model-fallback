@@ -6,11 +6,9 @@ An OpenCode plugin, delivered as an npm package and pinned by its version. It
 needs OpenCode 2.1.2 or later. It is tested on OpenCode 2.1.2 and 2.3.0, and
 CI loads the plugin into both.
 
-The fallback itself is being built: it will route each agent through an ordered
-list of models, launch a subagent on the first one that is available, and move
-a session to the next model when one hits a limit. Its settings will be
-documented here as they land. With nothing configured, the plugin changes
-nothing.
+The fallback routes launches today: a subagent starts on the first usable model
+of its agent's route. Moving a session to the next model when one hits a limit
+is still being built. With nothing configured, the plugin changes nothing.
 
 [`docs/conventions.md`](docs/conventions.md) describes how the tools are named
 and how they behave, and the rules of the fallback.
@@ -32,6 +30,67 @@ OpenCode takes the package and its options in `opencode.json`:
 OpenCode allows any action no rule names, so the plugin's request is granted
 silently unless a rule says `ask`. Read tools never ask, so the `fallback_*` glob
 is safe.
+
+## Routes
+
+A route is an agent's models, in the order they are tried. Each step is written
+`provider/model#variant`, as `/models` and an agent's `model` write it; the
+`#variant` is optional. `routes` is a plugin option only, with no environment
+variable or flag:
+
+```json
+{
+  "plugins": [
+    {
+      "package": "@craftsamo/opencode-model-fallback@<version>",
+      "options": { "routes": { "reviewer": ["provider-a/model-x", "provider-b/model-y#high"] } }
+    }
+  ]
+}
+```
+
+A new subagent launch of a listed agent takes the first step whose model
+OpenCode lists as usable: enabled, active, able to call tools and, for a step
+with a variant, having that variant. OpenCode lists only the providers it can
+use, so a provider without a login is skipped. The route wins over the model
+the agent's own definition names. The agent keeps its prompt and permissions.
+
+Some launches are left as they are:
+
+- a continuation of an existing child;
+- a launch that names a model;
+- an agent with no route.
+
+When no step is usable, the launch goes ahead as OpenCode would have made it.
+
+### Notices
+
+The result of a launch starts with one `[Model fallback: …]` line, but only
+when the model changed or no step was usable. When the model changed:
+
+```text
+[Model fallback: reviewer provider-a/model-x → provider-b/model-y#high; provider-a/model-x is not in OpenCode's models]
+```
+
+The reason is the steps passed over, or `the route replaces the agent's model`
+(`the inherited model`, when the agent names none) when the first step was
+taken. When no step was usable:
+
+```text
+[Model fallback: reviewer: no step of its route is usable; launched on provider-c/model-z]
+```
+
+It reads `launched on OpenCode's choice` when no model is known. The same facts
+are in the result's metadata under `opencode-model-fallback.launch`: `agent`,
+`from`, `to` (`null` when no step was usable), `reason` and `skipped` (a list
+of `{ model, reason }`).
+
+Route entries that cannot be read, and fallback features that stayed off, are
+told once, on the first launch:
+
+```text
+[Model fallback: config ignored: routes.reviewer[1]: "provider-b" is not provider/model#variant]
+```
 
 ## Tools and skills
 

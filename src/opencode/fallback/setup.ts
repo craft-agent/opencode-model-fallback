@@ -1,9 +1,10 @@
 import type { V2Context } from "../types"
 import { startFeatures, type Feature, type RunningFeatures } from "./feature"
+import { LAUNCH } from "./launch"
 import { MIN_OPENCODE_VERSION, meetsMinimum } from "./version"
 
-/** The features of the fallback; none yet, so a plugin with nothing configured registers nothing. */
-export const FEATURES: readonly Feature[] = []
+/** The features of the fallback; each registers nothing until its settings are given, so a plugin with nothing configured changes nothing. */
+export const FEATURES: readonly Feature[] = [LAUNCH]
 
 /**
  * Sets up the fallback on an OpenCode that is at least `MIN_OPENCODE_VERSION`

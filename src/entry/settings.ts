@@ -471,7 +471,13 @@ function listOption(name: "tools" | "exclude_tools"): (value: unknown) => string
 
 const LANGUAGE_OPTION = "language"
 function pluginOptionNames(profile: EntryProfile): readonly string[] {
-  return [...TOOL_OPTION_NAMES, ...GRANT_OPTION_NAMES, LANGUAGE_OPTION, ...Object.keys(profileOptions(profile))]
+  return [
+    ...TOOL_OPTION_NAMES,
+    ...GRANT_OPTION_NAMES,
+    LANGUAGE_OPTION,
+    ...Object.keys(profileOptions(profile)),
+    ...(profile.pluginOptions ?? []),
+  ]
 }
 
 /** The environment variable of the `language` setting: `<envPrefix>_LANGUAGE`. */
