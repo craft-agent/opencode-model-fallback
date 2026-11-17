@@ -3,8 +3,8 @@ import type { V2SessionHooks } from "../types"
 /** The event of the `retry` hook: OpenCode's error for a failed model request and its own decision on retrying it. */
 export type RetryEvent = V2SessionHooks["retry"]
 
-/** A limit a retry event shows; `waitMs` is the wait OpenCode reported, when it reported one. */
-export type Limit = { waitMs?: number }
+/** A limit a retry event shows: a `quota` or a `rate` limit; `waitMs` is the wait OpenCode reported, when it reported one. */
+export type Limit = { kind: "quota" | "rate"; waitMs?: number }
 
 const QUOTA_ERROR = "provider.quota"
 const RATE_LIMIT_ERROR = "provider.rate-limit"
@@ -28,7 +28,7 @@ function reportedDelay(event: RetryEvent): number | undefined {
 export function readLimit(event: RetryEvent, maxWaitMs: number): Limit | undefined {
   const type = event.error?.type
   const delay = reportedDelay(event)
-  if (type === QUOTA_ERROR) return delay === undefined ? {} : { waitMs: delay }
+  if (type === QUOTA_ERROR) return delay === undefined ? { kind: "quota" } : { kind: "quota", waitMs: delay }
   const rateLimited = type === RATE_LIMIT_ERROR || event.error?.status === TOO_MANY_REQUESTS
-  return rateLimited && delay !== undefined && delay > maxWaitMs ? { waitMs: delay } : undefined
+  return rateLimited && delay !== undefined && delay > maxWaitMs ? { kind: "rate", waitMs: delay } : undefined
 }
