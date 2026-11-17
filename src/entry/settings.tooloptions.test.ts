@@ -159,6 +159,24 @@ describe("plugin tool options", () => {
   })
 })
 
+describe("plugin-only options", () => {
+  const pluginProfile: EntryProfile = { ...profile, pluginOptions: ["routes"] }
+
+  test.each([[undefined], [{ build: ["a/b"] }], ["text"], [42]])("accepts routes=%p without reading it", (value) => {
+    expect(() => settingsFromOptions({ routes: value }, {}, pluginProfile)).not.toThrow()
+  })
+
+  test("rejects other unknown options and lists routes among the names", () => {
+    const message = failure(() => settingsFromOptions({ nope: 1 }, {}, pluginProfile)).message
+    expect(message).toContain('Unknown option "nope"')
+    expect(message).toContain("routes")
+  })
+
+  test("gives them no flag or environment variable", () => {
+    expect(settingVariables(pluginProfile)).toEqual(settingVariables(profile))
+  })
+})
+
 describe("path tool options", () => {
   const pathProfile: EntryProfile = { ...profile, options: { notes_dir: "path", extra_dirs: "paths" } }
   const home = "/home/demo"

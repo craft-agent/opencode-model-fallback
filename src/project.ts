@@ -14,6 +14,8 @@ export const PROJECT = {
   defaultToolsets: [] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
   options: {} as Readonly<Record<string, OptionSpec>>,
+  /** Options only the plugin's own features read, from its configuration: they have no flag or environment variable, and the settings accept them without reading their values. */
+  pluginOptions: ["routes"] as readonly string[],
   /** The environment variables the tools read besides the settings. */
   toolVariables: [] as readonly string[],
 } as const
