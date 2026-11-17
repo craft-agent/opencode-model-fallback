@@ -1,8 +1,11 @@
 /**
  * Loads the built plugin package into a real OpenCode 2 server, headless and
  * without model credentials, and fails unless OpenCode ran the plugin's setup
- * and its context has the calls the fallback uses. A probe plugin
- * (`scripts/opencode-load-probe`) reports what the context offers.
+ * and its context has the calls the fallback uses, and that plugins start in
+ * the order they are listed. A probe plugin (`scripts/opencode-load-probe`)
+ * reports what the context offers; a second one, listed first
+ * (`scripts/opencode-load-probe-first`), and a shim around the package mark
+ * when each setup starts and ends.
  *
  * usage: node scripts/opencode-load.mjs <opencode-binary> <package-dir> <scratch-dir>
  */
@@ -19,7 +22,14 @@ if (!binary || !packageArg || !scratchArg) {
 }
 const PACKAGE = resolve(packageArg)
 const SCRATCH = resolve(scratchArg)
-const PROBE = join(dirname(fileURLToPath(import.meta.url)), "opencode-load-probe")
+const SCRIPTS = dirname(fileURLToPath(import.meta.url))
+const PROBE = join(SCRIPTS, "opencode-load-probe")
+/** The probe listed before the package, which marks its setup first. */
+const PROBE_FIRST = join(SCRIPTS, "opencode-load-probe-first")
+/** The shared array, under `Symbol.for(...)`, where the plugins mark their setups. */
+const ORDER_KEY = "opencode-model-fallback.ci.load-order"
+/** The order the plugins must start in, each setup ending before the next starts. */
+const EXPECTED_ORDER = ["first:start", "first:end", "package:start", "package:end", "probe:start"]
 const SHIM = join(SCRATCH, "plugin")
 const WORK = join(SCRATCH, "work")
 const HOME = join(SCRATCH, "home")
@@ -60,12 +70,30 @@ rmSync(SCRATCH, { recursive: true, force: true })
 for (const dir of [SHIM, WORK, join(HOME, "tmp")]) mkdirSync(dir, { recursive: true })
 // OpenCode 2.1 loads a local plugin directory from its root server or index
 // file and ignores package.json exports, so the package loads through a shim.
-writeFileSync(join(SHIM, "index.js"), `export { default } from ${JSON.stringify(entry)}\n`)
+// The shim also marks when the package's setup starts and ends.
+writeFileSync(
+  join(SHIM, "index.js"),
+  `import real from ${JSON.stringify(entry)}
+const order = (globalThis[Symbol.for(${JSON.stringify(ORDER_KEY)})] ??= [])
+export default {
+  ...real,
+  async setup(...args) {
+    order.push("package:start")
+    try {
+      return await real.setup(...args)
+    } finally {
+      order.push("package:end")
+    }
+  },
+}
+`,
+)
 writeFileSync(
   join(WORK, "opencode.json"),
   JSON.stringify(
     {
       plugins: [
+        { package: PROBE_FIRST },
         { package: SHIM, options: PLUGIN_OPTIONS },
         { package: PROBE, options: { out: OUT, rpc: RPC_ENTRY } },
       ],
@@ -189,6 +217,9 @@ try {
     failures.push(`a call to an unregistered RPC did not reject: ${JSON.stringify(none)}`)
   else console.log(`RPC: a call with no plugin registered rejects with type ${none.type}.`)
   if (report?.rpc?.error !== undefined) failures.push(`the RPC probe failed: ${report.rpc.error}`)
+  if (JSON.stringify(report?.order) !== JSON.stringify(EXPECTED_ORDER))
+    failures.push(`the plugins started in the order ${JSON.stringify(report?.order)}, not ${EXPECTED_ORDER.join(", ")}`)
+  else console.log(`Plugins started in list order: ${report.order.join(", ")}.`)
   const loaded = plugins.find((item) => item.id === plugin.id)
   if (!loaded) failures.push(`OpenCode does not list the plugin ${plugin.id}`)
   else if (loaded.state?.status !== "active")
