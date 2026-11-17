@@ -6,13 +6,13 @@ import { packageRoot } from "./package-root"
 
 describe("packageRoot", () => {
   test("is the directory above the one holding the bundle, for a URL or its text", () => {
-    const bundle = pathToFileURL("/opt/tools/node_modules/agent/dist/cli.js")
+    const bundle = pathToFileURL("/opt/tools/node_modules/agent/dist/opencode.js")
     expect(packageRoot(bundle)).toBe("/opt/tools/node_modules/agent")
     expect(packageRoot(bundle.href)).toBe("/opt/tools/node_modules/agent")
   })
 
   test("is the directory holding package.json for a bundle in this package's dist", () => {
-    const root = packageRoot(new URL("../../dist/mcp.js", import.meta.url))
+    const root = packageRoot(new URL("../../dist/opencode.js", import.meta.url))
     expect(existsSync(join(root, "package.json"))).toBe(true)
   })
 

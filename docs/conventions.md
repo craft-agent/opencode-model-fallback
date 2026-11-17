@@ -1,19 +1,18 @@
 # Tool conventions
 
 The rules every tool in this package follows, so tools read alike across
-domains and harnesses. Each rule carries the reason it was chosen; a change
+domains. Each rule carries the reason it was chosen; a change
 to a rule changes this file first, with its reason.
 
 ## Names
 
 - **Tool IDs are `<prefix>_<domain>_<verb>`**: `<prefix>_note_read` and
   `<prefix>_note_create` for a `note` domain. The prefix is `toolPrefix` in
-  `src/project.ts`; it keeps a name unambiguous where a harness lists every
+  `src/project.ts`; it keeps a name unambiguous where OpenCode lists every
   tool in one namespace. When the domain has a well-known command line,
   follow its word order, so a name maps to a command anyone can look up.
-- **The same ID in every entry point.** Permission rules and skills are
-  written once, and an ID is a public interface: renaming one is a breaking
-  change.
+- **An ID is a public interface.** Permission rules and skills are written
+  against it, so renaming one is a breaking change.
 - **Verbs are plain**: `create`, `edit`, `delete`, `add`, `remove`, and these
   with a fixed meaning:
 
@@ -25,42 +24,37 @@ to a rule changes this file first, with its reason.
 
 - **One read tool per domain, one write tool per operation.**
   `<prefix>_<domain>_read` takes a `method` argument (`view`, `list`, …). A
-  model picks tools worse as their number grows, and reads share one set of
-  annotations, so folding them loses nothing. Writes stay apart because a
+  model picks tools worse as their number grows, and reads share one class,
+  so folding them loses nothing. Writes stay apart because a
   merged write tool would carry its strictest class: creating something would
   ask like overwriting it.
-- **Names stay within 40 characters**, so a client prefix such as
-  `mcp__<server>__` still fits a 64-character limit. `defineTool` enforces
-  the shape and the length; `src/tools.test.ts` enforces the prefix.
+- **Names stay within 40 characters**, so a prefix a host adds still fits a
+  64-character limit. `defineTool` enforces the shape and the length;
+  `src/tools.test.ts` enforces the prefix.
 
 ## Arguments
 
 - **snake_case**, for arguments and for the keys of a result alike: one style
   for everything a model reads.
 - **Lists change through flat arguments**: `add_tags`, `remove_tags`. Shallow
-  schemas are read reliably by every model the harnesses run. An argument that
+  schemas are read reliably by every model OpenCode runs. An argument that
   replaces a whole list, where one is needed, is named for the list (`tags`)
   and its description says it replaces.
-- **Unknown arguments are refused.** Every entry point validates the
-  arguments as strict, so a misspelt one fails as `invalid_argument` instead
-  of being ignored.
-- **The tools' own install directory is never the working tree.** A harness
+- **Unknown arguments are refused.** The plugin validates the arguments as
+  strict, so a misspelt one fails as `invalid_argument` instead of being
+  ignored.
+- **The tools' own install directory is never the working tree.** OpenCode
   may start a tool inside the directory the package is installed in.
   `ToolContext.ownDir` names it; a tool that reads the working tree refuses
   to treat that directory as the caller's, saying so.
-- **The MCP server takes the call's directory from the client.** It uses a
-  directory sent with the call (Codex), else the client's first usable root,
-  else the process's working directory; never inside the install directory.
-  This keeps a server started in its install directory out of the working tree.
 
 ## Results
 
-- **A tool returns its data as a plain object**, with no `ok` envelope. Each
-  entry point renders it: the MCP server as `structuredContent` with the
-  tool's `outputSchema` plus the same JSON as text, a native plugin as a JSON
-  string.
-- **A failure throws.** Every harness then sees a failed call (`isError` over
-  MCP) rather than a success that carries an error.
+- **A tool returns its data as a plain object**, with no `ok` envelope. The
+  plugin renders it: the structured result for OpenCode, and the same JSON as
+  text for the model.
+- **A failure throws.** OpenCode then sees a failed call rather than a
+  success that carries an error.
 - **One exception: what a call created is never lost.** Once a tool has
   created something, a later step of the same call that fails does not throw.
   The result names what was created and lists the failed steps under
@@ -84,7 +78,7 @@ says what to do next.
 | `rate_limited`     | the service refused the call for its rate limit                            |
 | `declined`         | the person declined a confirmation the tool asked for                      |
 | `upstream_error`   | the service or program the tool calls failed; the message carries its text |
-| `internal_error`   | a bug in a tool or an entry point, such as a result off its schema         |
+| `internal_error`   | a bug in a tool or the plugin, such as a result off its schema             |
 
 A project adds a code to `src/core/errors.ts` and to this table together.
 
@@ -95,54 +89,46 @@ A project adds a code to `src/core/errors.ts` and to this table together.
   instead of parsing them back out of prose; the message still says what to
   do next on its own.
 - **`details` is fixed when the error is made.** `ToolError` keeps a frozen
-  JSON copy, so every entry point renders the same value. The copy is what
+  JSON copy, so it renders the same wherever it is shown. The copy is what
   JSON makes of it (`undefined` is dropped, `NaN` becomes `null`), and a value
   JSON cannot write at all, such as a cycle or a `BigInt`, fails where it was
   thrown, as a bug, not where it is rendered.
-- **Each entry point passes `details` on only when it is set**, so an error
-  without it reads as it always did. The MCP server and the command line put
-  it beside the code and the message, as `error.details`. The OpenCode and
-  Hermes plugins, whose errors are text, append it to `<code>: <message>` as
-  JSON on a line of its own.
+- **The plugin passes `details` on only when it is set**, so an error without
+  it reads as it always did. Its errors are text: it appends `details` to
+  `<code>: <message>` as JSON on a line of its own.
 - The `errors` of a partial result (`StepErrors`) stay `<code>: <message>`
   strings.
 
 ## Write classes
 
-Every tool belongs to one class, and the class sets its MCP annotations.
-`openWorldHint` is `true` for every tool.
+Every tool belongs to one class.
 
-| Class             | Examples                              | `readOnlyHint` | `destructiveHint` | `idempotentHint` |
-| ----------------- | ------------------------------------- | -------------- | ----------------- | ---------------- |
-| read              | view, list, resolve                   | `true`         | —                 | `true`           |
-| add               | create, add                           | `false`        | `false`           | `false`          |
-| idempotent change | ensure, adding a tag                  | `false`        | `false`           | `true`           |
-| overwrite         | editing a body or title, removing one | `false`        | `true`            | `true`           |
-| administrative    | delete, visibility, publishing        | `false`        | `true`            | `false`          |
+| Class             | Examples                              |
+| ----------------- | ------------------------------------- |
+| read              | view, list, resolve                   |
+| add               | create, add                           |
+| idempotent change | ensure, adding a tag                  |
+| overwrite         | editing a body or title, removing one |
+| administrative    | delete, visibility, publishing        |
 
-- **Overwriting counts as destructive**: it loses what was there, and
-  harnesses that confirm only destructive tools should still ask before it.
+- **Overwriting is a class of its own**: it loses what was there, so it is
+  not told apart from adding only by its name.
 - **A tool takes the strictest class its arguments can reach.**
-- **The harness confirms writes.** Every MCP client asks before it runs a
-  write tool, so the tool does not ask again by default. Administrative tools
-  also carry `_meta["anthropic/requiresUserInteraction"]: true`, which makes
-  Claude Code ask even under an allow rule.
-- **A native plugin asks the harness's own permission before every non-read
-  call**, since the tools a native plugin adds pass through no harness
-  approval of their own.
+- **The plugin asks OpenCode's own permission before every non-read call**,
+  since the tools a plugin adds pass through no OpenCode approval of their
+  own. A read never asks.
 - **It asks for everything the call writes to.** A write tool's `targets`
   resolver names what the call writes to, as the permission rules name it
   (a path, an account, a record). Anything it cannot tell, every tool
-  without a resolver, and a target holding `*` or `?` (which a harness would
+  without a resolver, and a target holding `*` or `?` (which OpenCode would
   store as a pattern) is `*`, and `*` is never stored. An "always" answer then
   covers only what it named, never a write somewhere else.
 - **It shows what the call carries, where the tool can say.** Targets are
   ids, so they cannot tell one kind of target from another, and the person
   decides on the text, the file or the kind of target as much as on where it
-  goes. A write tool's `describe` says it. An MCP client draws the call's
-  arguments in its own prompt, so the MCP server adds nothing.
-- **Every native plugin's prompt has one shape**, so a person reads every
-  tool's prompt the same way:
+  goes. A write tool's `describe` says it.
+- **Every prompt has one shape**, so a person reads every tool's prompt the
+  same way:
 
   ```text
   About to create "todo.md"
@@ -162,8 +148,8 @@ Every tool belongs to one class, and the class sets its MCP annotations.
   last section is the text the call carries, under the tool's own label. A
   section with nothing to show is left out, so a tool without `describe`
   shows its intent and its targets, and one whose targets cannot be told
-  shows its intent alone. The harness names the tool beside the prompt, so
-  the prompt does not repeat its id.
+  shows its intent alone. OpenCode names the tool beside the prompt, so the
+  prompt does not repeat its id.
 
 - **A write tool states its intent.** Besides its title, which names the
   tool wherever tools are listed, a write tool gives an `intent`: a fixed
@@ -176,7 +162,7 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   chooses the arguments and nothing else, and a prompt is only as good as the
   person's trust in its lines. The headline is the tool's intent, or a
   template the tool picks (`About to create {file}`) whose values the entry
-  point quotes, so where the tool's words end and the call's data begins is
+  plugin quotes, so where the tool's words end and the call's data begins is
   always visible. A value comes from what the tool resolved, never from a
   model's account of it (the record's real name, not the name the model
   gave). The text section holds what the call writes, as it is, never a
@@ -193,10 +179,10 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   fact never repeats the headline or a target. `src/core/facts.ts` holds the
   facts every package can use (`sizeFact`); a package adds its own beside its
   tools in the same form and lists them in its section below.
-- **The head of the prompt comes first and fits; the text comes last.** Some
-  harnesses cut a prompt from its end at a few hundred characters, so the
+- **The head of the prompt comes first and fits; the text comes last.** A
+  host may cut a prompt from its end at a few hundred characters, so the
   headline, the targets and the facts are kept within the budget of where the
-  prompt is shown, and the text is what is cut. A headline that would push a
+  prompt is shown, if it has one, and the text is what is cut. A headline that would push a
   target past the cut gives way to the intent, since the targets are what an
   "always" answer stores. Facts that do not fit are counted on a notice
   line, which stays even when the head alone fills the budget: a person
@@ -218,20 +204,11 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   the tool gave, the unit the cut counts (`(+1 more character)` for one), and
   the notice is the plugin's own words, translated like the facts' notice.
   Only the head counts towards the budget, so the text's notice is lost
-  wherever the harness cuts the text, which then shows its own end mark.
+  wherever a host cuts the text, which then shows its own end mark.
 - **Characters other people wrote are shown, never obeyed.** A target's name
   or a file's name can hold control, bidi and invisible characters that
   forge a line of the prompt or hide part of a value; each is shown as
-  `<U+XXXX>`, and a quote inside a headline value as `\"`. Where the prompt
-  renders markup, everything but the plugin's own section lines is escaped,
-  so a name cannot draw a link or a mention. The budget and the escaping are
-  those of the surface the harness names. A surface the harness shows as
-  written, such as its own clients, gets neither. A surface it names that the
-  plugin does not know is one the harness does not cut, so it gets no budget,
-  but it may render markup the plugin cannot tell, so it gets the strictest
-  escaping of all: an escape shown as written reads as a stray backslash,
-  while a name left unescaped can draw a link or a mention. A prompt whose
-  surface cannot be told gets the strictest budget and escaping of all.
+  `<U+XXXX>`, and a quote inside a headline value as `\"`.
 - **A description never stands between a call and its approval.** A tool
   without `describe`, a `describe` that fails, returns another shape or takes
   longer than 10 s gives the prompt it would have given without one. The
@@ -242,25 +219,20 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   an object the settings keep away from the agent; a prompt for it would
   show what it names and invite an "allow" that cannot be honored. A tool
   that can tell such a call from its arguments and settings gives a `gate`
-  (see "The core contract"). Every entry point runs it before the approval
+  (see "The core contract"). The plugin runs it before the approval
   and again before `execute`, so a refusal is the call's result, as an
-  error, and no prompt is drawn: a native plugin asks nothing, and the
-  Hermes plugin blocks the call. Unlike `targets` and `describe`, a gate
+  error, and the plugin asks nothing. Unlike `targets` and `describe`, a gate
   fails closed: one that cannot tell fails the call with `internal_error`.
-  Where the question itself cannot be resolved (the Hermes plugin's `target`
-  fails or times out), the person is asked as before, and the run refuses
-  the call after the answer. An MCP client draws its own prompt before the server sees the call, so
-  there the refusal comes after the client's question, never after the run.
 - **A call runs on what its prompt showed.** What a person approves is what
   was true when the prompt was drawn; between the answer and the run, a file
-  the call reads can be rewritten or a target can change kind. So a native
+  the call reads can be rewritten or a target can change kind. So the
   plugin pins the prompt of every call whose tool has `describe`: the
   targets and the description, before translation, as one hash. The hash
   takes the description whole, before the budgets above cut it: a text past
   its 2000 characters, a value past its cut and the facts past the eighth
   are what the call carries too, so a change there is a change of the call
   even where the prompt could not show it. Right
-  before the call runs, the entry point resolves both again, and a call
+  before the call runs, the plugin resolves both again, and a call
   whose hash differs, or whose description can no longer be told, fails with
   `stale` without running; the person is asked again on the next call. A
   call whose prompt showed no description pins nothing and runs as before,
@@ -271,26 +243,22 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   answer for the same state: a value that changes on every call, such as the
   time, makes every call `stale`. The check narrows the gap between the
   answer and the run to the moment before `execute`; a tool that must close
-  it entirely still checks inside `execute`. An MCP client draws the call's
-  arguments, not a description, so the MCP server pins nothing.
-- **The prompt speaks the language set for the harness.** A native plugin
-  draws its prompt in the language of the `language` setting, else in the
-  harness's own display language where it has one (Hermes's
-  `display.language`), else in English. No harness tells a plugin who
-  approves a call, so this is the language set where the plugin runs, not
-  each person's. The server's locale (`LANG`) is never read: it is the
-  machine's, and a person reading English on a machine set to another
-  language would see the prompt change. A tag matches its own table, else
+  it entirely still checks inside `execute`.
+- **The prompt speaks the language set for the plugin.** The plugin draws its
+  prompt in the language of the `language` setting, else in English. OpenCode
+  does not tell a plugin who approves a call, so this is the language set
+  where the plugin runs, not each person's. The machine's locale (`LANG`) is
+  never read: a person reading English on a machine set to another language
+  would see the prompt change. A tag matches its own table, else
   the one of its first subtag (`ja-JP` and `ja_JP` are `ja`; `zh-Hant` can
   have its own), and a language the package has no words for falls back to
-  English without a word. An MCP client draws its own prompt,
-  so the MCP server takes no `language`.
+  English without a word.
 - **Translations are tables keyed by the English words.** The plugin's own
   words (`Details`, `Target`, `(+N more)`) and a tool's (its title, its
   intent, its headline templates, its fact labels, its value templates and its text
   label) are written in
   English in the code. Per language, a package gives one table from those
-  English words to their translation (`src/words.ts`), and the entry point
+  English words to their translation (`src/words.ts`), and the plugin
   looks each word up as it draws the prompt, so a tool's code does not change.
   A translated template must hold the same placeholders as the English one
   and keep within its limits, or the English one is used, so a translation
@@ -299,70 +267,38 @@ note`). The prompt shows it wherever no headline can stand: a tool without
   up and its values filled in after (`{bytes} バイト`), and a plain string
   value stays as the tool wrote it. A translation is marked like every other
   piece of the prompt.
-- **`confirm: "elicitation"` adds the tool's own form** for administrative
-  tools, where the client offers form-mode elicitation. It is for people who
-  switch the client's approvals off: the tool states what will happen in plain
-  words and stops on anything but an accept. Where the client does not offer
-  elicitation the setting adds nothing, and the harness's approval is then the
-  only confirmation.
-- **Annotations are hints, not a boundary.** The `read_only` setting
+- **A write class is a hint, not a boundary.** The `read_only` setting
   (below) is what keeps writes out.
 
 ## Toolsets and settings
 
-Every entry point takes the same settings:
+The plugin takes these settings:
 
 - **Toolsets**: one per domain, listed in `src/project.ts` with the ones on by
   default. A small default keeps the model's choice sharp.
 - **`read_only`** registers no write tool, and wins over every other setting.
 - **`tools` / `exclude_tools`** add or remove single tools; an exclusion wins
   over an inclusion.
-- **`confirm`** is `harness` (the default) or `elicitation`; it says who asks
-  before an administrative tool acts (see "Write classes"). The default leaves
-  the question to the harness, whose approval every user already knows.
-- **`language`** is the language of a native plugin's approval prompt (see
-  "Write classes"); unset, the prompt follows the harness's display language
-  or stays in English.
-- **`emoji`** maps a toolset name to the emoji the Hermes plugin shows beside
-  it, merged over the package's `TOOLSET_EMOJI`; `""` shows no emoji for that
-  toolset, and no other entry point shows an emoji. A value that is not a
-  mapping, an entry whose value is not a string, and a name that is no toolset
-  are ignored rather than refused: the setting only changes what is shown, so a
-  typo must not take every tool away.
-- **`require_plugins`** names the Hermes plugins the Hermes plugin's writes
-  depend on, such as a guard whose `pre_tool_call` block keeps writes from
-  running unattended. Hermes drops a plugin that fails to import or register
-  and loads the rest, and treats a manifest's `requires_plugins` as advisory,
-  so a guard can vanish with nothing to say so. While any named plugin is not
-  loaded (`ctx.has_plugin` says no, or cannot be asked), every call of a tool
-  that is not a read is refused before its approval is asked, so neither YOLO,
-  an approvals mode of `off` nor a remembered answer lets it run, and again
-  before it runs. The refusal is `forbidden` with `details.reason`
-  `missing_plugin` and `details.plugins` the names missing. Reads run as
-  before. The check runs on every call, not at registration, since the order
-  in which Hermes loads two plugins is not the plugins' to fix. Unset or
-  empty, nothing is checked. A value that is not a list of names is refused,
-  like a wrong `read_only`, and the plugin then registers nothing: ignoring it
-  would loosen what the person asked for. No other entry point has it.
+- **`language`** is the language of the plugin's approval prompt (see
+  "Write classes"); unset, the prompt stays in English.
 - **Options** are the package's own settings, the ones the tools themselves
-  read, listed in `options` in `src/project.ts` (and `OPTIONS` in the Hermes
-  plugin's `project.py`), each mapping a snake_case name to its type (`text`,
+  read, listed in `options` in `src/project.ts`, each mapping a snake_case
+  name to its type (`text`,
   `boolean`, `number`, `list`, `path` or `paths`) or a declaration with
   `{ type, integer, min, max }`. `integer: true` requires a whole `number`;
   `min` and `max` bound a `number` or count the items of a `list` or `paths`.
-  Only `type` is required. Its flag is the name with `_` as `-` (a
-  `boolean` flag takes no value), its variable is `<envPrefix>_<NAME>`
-  uppercased, and its plugin option or setting is the name itself. A flag wins
-  over its variable, an option over its variable, and a blank text or path or
+  Only `type` is required. Its variable is `<envPrefix>_<NAME>`
+  uppercased, and its plugin option is the name itself. An option wins
+  over its variable, and a blank text or path or
   empty list counts as unset. A `path` is trimmed; `~` alone or followed by
   `/` (or the platform separator) stands for the home directory: `HOME` when
   it is absolute, else the account's.
   The expanded path must be absolute and reaches the tool normalized, without
   a filesystem check. A `paths` value is a list of such paths, comma-separated
-  in a flag or variable and an array of strings in a plugin option; items are
+  in a variable and an array of strings in a plugin option; items are
   trimmed and blank items dropped, and none left counts as unset. Bounds
   check only a value that is given, after blanks are dropped; unset stays
-  unset. Refused values are `invalid_argument`, naming the flag, variable or
+  unset. Refused values are `invalid_argument`, naming the variable or
   option and what it must be. A package should not have to check a directory
   or a limit again inside its tool. They reach a tool as `context.options`,
   keyed by name, and one that is not given is absent: a neutral default means
@@ -374,11 +310,11 @@ Every entry point takes the same settings:
 
 ## Writes no one is there to approve
 
-When no person can answer, a harness either refuses a write or, with its
-approvals skipped, runs it with no limit at all; a host's allow rule names a
+When no person can answer, OpenCode either refuses a write or, with its
+approvals skipped, runs it with no limit at all; an allow rule names a
 tool and at most its targets, with no expiry, no count and nothing about what
 the call carries. So a person delegates, in advance, a bounded set of writes,
-and every entry point checks them the same way.
+and the plugin checks them.
 
 - **The person decides what to delegate; the package keeps only its
   guarantees.** A person who cannot delegate a write still runs it
@@ -390,8 +326,8 @@ and every entry point checks them the same way.
   targets, which bounds, how many calls) is the person's choice, shown whole
   on the consent screen.
 
-- **A setting says that no one can be asked.** No harness tells a plugin or
-  an MCP server that its questions will go unanswered, and the modes that
+- **A setting says that no one can be asked.** OpenCode does not tell a plugin
+  that its questions will go unanswered, and the modes that
   skip approvals are the ones with no person in the loop, so nothing is
   inferred from them. `unattended` says it. Off, the default, nothing changes
   and grants are not read. On, a read runs as before and a write runs only
@@ -436,14 +372,11 @@ and every entry point checks them the same way.
   then the one that sets the most bounds, then the one that expires first.
   A call counts against its grant's rate whether it succeeds or fails, and
   every call is logged whether the grant sets a rate or not.
-- **Grants restrict; the host still allows.** `invoke` checks the grant
-  after the gate and before `execute`, so the MCP server and the command
-  line's `run` enforce it too, and the native plugins and the Hermes
-  plugin's `target` check it before they ask, refusing without a question.
-  The harness's own permission still decides whether the call reaches the
-  package at all (an allow rule, an allowed-tools list, an approve mode), so
-  a grant means the same in every harness and never lets a call through
-  that the host would stop.
+- **Grants restrict; OpenCode still allows.** `invoke` checks the grant
+  after the gate and before `execute`, and the plugin checks it before it
+  asks, refusing without a question. OpenCode's own permission still decides
+  whether the call reaches the package at all (an allow rule, an approve
+  mode), so a grant never lets a call through that OpenCode would stop.
 - **A refusal says why.** It is `forbidden`, with `details.reason`.
   `person_only` (a tool only a person's own answer may run), `no_key` and
   `tampered` (a grant or the log fails its MAC) refuse every call. Otherwise
@@ -468,18 +401,14 @@ and every entry point checks them the same way.
 - **Only a person's answer creates a grant.** A grant that the agent could
   give itself would bound nothing. `grant_create` is marked person-only: it is
   refused while `unattended` is on, no grant ever covers a person-only tool
-  nor can one be created for it, and every
-  entry point keeps a standing answer from covering it: the OpenCode plugin
-  makes its permission `ask` with nothing to save, the MCP server marks it
-  `requiresUserInteraction` and asks through form elicitation where the
-  client offers it, whatever `confirm` says, and the Hermes plugin gives each
-  call a rule key of its own. A harness run with every approval skipped asks
-  about nothing, and no package can tell; the README says so for each
-  harness. Revoking only narrows, so `grant_revoke` runs while `unattended`
+  nor can one be created for it, and a standing answer never covers it: the
+  plugin makes its permission `ask` with nothing to save. An OpenCode run with
+  every approval skipped asks about nothing, and no package can tell; the
+  README says so. Revoking only narrows, so `grant_revoke` runs while `unattended`
   is on without a grant.
 - **Grants and their use are signed with a key the host supplies.** The
   variable `<envPrefix>_GRANT_KEY` (at least 32 characters; a variable only,
-  never a flag or a plugin option, so it stays out of configuration files)
+  never a plugin option, so it stays out of configuration files)
   keys an HMAC-SHA256 over each grant and over a chained log of every call
   made under one: the grant, the tool, the targets, the measured values, a
   digest of the arguments, when it started and how it ended. A grant or a
@@ -503,38 +432,32 @@ and every entry point checks them the same way.
 
   The Agent Skills format allows no other top-level key, and its validators
   refuse one. The value is a plain or quoted one-line scalar; any other form
-  reads as no link. A folder's name never links a skill, so every entry point
-  reads the link the same way without knowing the package's toolsets.
+  reads as no link. A folder's name never links a skill, so the plugin reads
+  the link without knowing the package's toolsets.
 
-- **A native plugin registers a linked skill only when its toolset is on**:
+- **The plugin registers a linked skill only when its toolset is on**:
   when the settings register at least one tool of that toolset, from the same
   selection the tools come from. A skill that describes tools the model does
   not have invites calls that fail. So `read_only`, `tools` and
   `exclude_tools` count too: a toolset whose every tool is left out takes its
   skill with it. A skill with no link is always registered.
-- **Plugins that install the skill folder whole cannot follow the settings**:
-  Claude Code, Codex, Grok Build and Antigravity load every skill, since the
-  settings reach only the MCP server.
 - **Every linked skill names one of the package's toolsets**; a test checks
   it, since a misspelt link would hide the skill wherever it is filtered.
 - **A skill that works across toolsets names the one it cannot work without.**
   The link holds one toolset, and a skill linked to none would be registered
   with every tool it describes turned off. Its body says which steps to skip
-  when another toolset's tools are missing, and it leans only on toolsets that
-  are on by default, since the plugins that install the skill folder whole
-  list it whatever the settings select.
+  when another toolset's tools are missing.
 
 ## The core contract
 
 - A tool spec declares its ID, description, argument schema, output schema,
-  toolset and write class; every entry point derives the same metadata from
-  it. A write tool also declares `targets(args, context)`, which names what
+  toolset and write class; the plugin derives its tools from it. A write tool also declares `targets(args, context)`, which names what
   the call writes to.
 - Any tool, read or write, may declare `gate(args, context)`, which throws a
   `ToolError` (usually `not_found`, worded as for an object that does not
   exist) for a call no approval may let run, and returns otherwise. `invoke`
-  runs it after the arguments are checked and before `execute`; the entry
-  points also run it before they ask (see "Write classes"). It is cheap, it
+  runs it after the arguments are checked and before `execute`; the plugin
+  also runs it before it asks (see "Write classes"). It is cheap, it
   reads only what it needs to decide, and its message says no more about
   the target than the arguments already do.
 - A write tool may declare `bounds` and `measure(args, context)`, which say
@@ -549,14 +472,13 @@ and every entry point checks them the same way.
   working tree), the values of the package's own settings as `options` (see
   "Toolsets and settings"; `gate`, `describe` and `targets` get them too) and
   an optional `confirm(request) => Promise<boolean>` hook.
-  Nothing in it names a harness. An entry point supplies `confirm` when the
-  `elicitation` setting is on; without it the harness's approval stands, and a
-  tool that needs a confirmation treats a missing hook as the harness having
-  approved the call.
+  Nothing in it names a harness. The OpenCode plugin supplies no `confirm`:
+  OpenCode's approval stands, and a tool that needs a confirmation treats a
+  missing hook as OpenCode having approved the call.
 - `src/core/` uses only the `node:*` modules and plain dependencies, never a
   runtime's own globals (`Bun.spawn`, `Bun.file`, …), so the same code runs on
   Node and on Bun. It knows no project either: names, prefixes and toolsets
-  come from `src/project.ts` through the entry points.
+  come from `src/project.ts` through the plugin.
 
 ## Programs a tool runs
 
@@ -567,22 +489,136 @@ and every entry point checks them the same way.
   waits on a person and output parses the same everywhere.
 - **Every variable the tools read besides the settings is named in
   `toolVariables` in `src/project.ts`**, whether a tool reads it itself or
-  passes it through to a program. Codex gives a plugin's server only a few
-  basic variables (`PATH`, `HOME` and the like) and those its manifest names,
-  and `pnpm run manifests` writes that list from the settings and
-  `toolVariables`: a variable left out is set everywhere but in Codex.
+  passes it through to a program, so the list of what a tool depends on is in
+  one place.
 - **Every call has a time limit**, and a call that is stopped, by that limit
   or by cancellation, has its child process killed: `SIGTERM`, then `SIGKILL`
-  after two seconds. A hung program neither holds a harness forever nor
+  after two seconds. A hung program neither holds OpenCode forever nor
   outlives its call.
 - **The runner maps the program's failures to the error codes above.**
 
 ## Tests
 
 - Tests sit beside the code they test (`*.test.ts`) and run on `bun test`;
-  CI also starts the built MCP server, plugin and command line under Node and
-  lists their tools, so a runtime-only API cannot slip in unnoticed.
+  CI also loads the built plugin under Node and checks what it registers, so
+  a runtime-only API cannot slip in unnoticed.
 - No test reaches a real service. A tool that runs a program is tested
   against a fake of that program on `PATH`.
 - A test file stays within about 300 lines, split by topic
   (`<name>.<topic>.test.ts`), so one commit can carry a change and its test.
+
+## The model fallback
+
+The rules below are this package's own, on top of everything above; where one
+changes a rule above, it says so. The discussion behind them is on
+[#2](https://github.com/craft-agent/opencode-model-fallback/issues/2).
+
+### Scope
+
+- **The fallback is an OpenCode plugin's hooks, not tools.** It chooses the
+  model a subagent starts on and moves a session to another model on a limit,
+  which only OpenCode 2's plugin hooks can do. The rules on tools above apply
+  to any tool the package adds beside it.
+- **It knows no particular setup.** Routes, roles, models and provider
+  specifics reach it as settings or adapters; no role name, account label or
+  machine path appears in code, defaults, messages or examples.
+
+### Terms
+
+The settings, notices, README and code use one vocabulary:
+
+| Term     | Means                                                                                          |
+| -------- | ---------------------------------------------------------------------------------------------- |
+| route    | an agent's steps, in the order they are tried                                                  |
+| step     | one entry of a route: `<provider>/<model>#<variant>`                                           |
+| launch   | choosing the model a subagent starts on                                                        |
+| move     | switching a running session to the next step                                                   |
+| limit    | a refusal that waiting or another model would avoid: a usage window, a quota, an empty balance |
+| cooldown | how long a model that hit a limit is passed over                                               |
+
+A route needs no second notion of where a step runs: that is its provider.
+"Preflight", "place" and "stop", the names of the setup this came from, are
+not used.
+
+### Names
+
+- **The plugin id is the package name, `opencode-model-fallback`**, so it can
+  be traced from the npm name without a lookup.
+- **A key the plugin owns in a shared space is
+  `opencode-model-fallback.<name>`**: session metadata, and state shared
+  between modules through `Symbol.for`. It cannot collide with another
+  plugin's key, and it says whose it is.
+- **Setting keys are snake_case**, as in "Toolsets and settings" above, which
+  is also how OpenCode's own configuration writes its keys (`small_model`).
+
+### Settings
+
+- **A flat setting** (text, boolean, number, list, path) is declared in
+  `options` in `src/project.ts` and has its variable
+  `OPENCODE_MODEL_FALLBACK_<NAME>`, as above.
+- **A nested setting is a plugin option only**, read and checked by the
+  package itself: a table has no sensible variable. A part it cannot use is
+  ignored and named in a notice, never a reason to stop the rest.
+- **A route table maps an agent's name to its steps**:
+  `routes: { "<agent>": ["<provider>/<model>#<variant>", …] }`, tried in
+  order. A step is written as `/models` and an agent's `model` write it, with
+  `#<variant>` added, so it can be copied from either without translation.
+
+### Defaults
+
+- **With nothing configured, the plugin changes nothing.** There are no
+  built-in routes: only an agent with a route of its own is launched or moved,
+  the primary agent included.
+- **A boolean setting left out takes the side that changes the least.**
+- **No default names a role, model, provider account or machine**, since a
+  default is the one value every user gets.
+
+### State
+
+- **State lives in the package's own directory**: `$XDG_STATE_HOME/opencode-model-fallback/`,
+  else `~/.local/state/opencode-model-fallback/`, the same rule as
+  `grants_dir`; the path setting `state_dir` moves it. OpenCode's own state
+  directory belongs to OpenCode.
+
+### Notices
+
+- **Every notice the plugin adds starts with `[Model fallback: …]`**:
+  `[Model fallback: <agent> A → B; <why>]` for a launch or a move,
+  `[Model fallback: config ignored: …]` for a setting it could not use. One
+  prefix tells a reader whose notice it is.
+- **Notices are English and not translated**: the reader is the agent that
+  receives the result, not a person choosing a language.
+
+### OpenCode versions
+
+- **The plugin runs on any OpenCode from a minimum version on.** Below it,
+  nothing is registered. OpenCode releases often, and a list of trusted
+  versions would leave most installs without the plugin until a release of
+  this package caught up.
+- **A feature whose call is missing stays off**, and says so once in a
+  notice; the others run. The plugin checks at setup, by type, that each call
+  a feature needs is there.
+- **Hooks cannot be detected that way.** OpenCode 2.1.2 and 2.3.0 resolve
+  `session.hook` for any name: an unknown name returns a registration too. So
+  the hooks a feature uses must exist from the minimum version on. That is
+  checked against OpenCode's source for each tested version and by the CI
+  load check, which confirms the calls, the `subagent` tool and that setup
+  ran. A registration that throws still turns its feature off.
+- **The versions a release was checked on are listed in the README and run in
+  CI**, as information, not as a gate. An API that keeps its name but changes
+  its meaning is caught by those runs and by reports, not by the checks
+  above.
+
+### Tests
+
+- **Unit tests run on one shared fake of OpenCode 2's plugin context**, which
+  records hook registrations and calls such as `switchModel`. The clock, the
+  usage source and the state directory are passed in.
+- **No test reads a file outside the repository**, such as a consumer's own
+  configuration or agent files; an example configuration a test needs is a
+  fixture here.
+- **CI loads the built plugin into each OpenCode version the README lists**,
+  headless and without credentials, and checks that OpenCode ran its setup
+  and that the calls it needs are there. This adds to the
+  smoke runs above: a real OpenCode is a program on the machine, not a
+  service, and it catches a change in OpenCode before a person reports it.

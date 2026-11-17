@@ -1,13 +1,14 @@
 # Security policy
 
-opencode-model-fallback gives coding agents tools that act as the person running
-them. A flaw in it can let an agent do more than that person agreed to, so
+opencode-model-fallback is an OpenCode plugin that changes which models a
+coding agent runs on, and it can give agents tools that act as the person
+running them. A flaw in it can let an agent do more than that person agreed to, so
 please report one privately.
 
 ## Supported versions
 
-Fixes go into the latest release. Consumers pin a release tag, so they get a
-fix by moving to the new tag.
+Fixes go into the latest release. Consumers pin an npm version, so they get a
+fix by moving to the new version.
 
 ## Reporting a vulnerability
 
@@ -16,9 +17,9 @@ Report it through [GitHub Security Advisories](https://github.com/craft-agent/op
 A useful report says:
 
 - what an attacker can do, and what they need to do it
-- the tool, entry point and harness affected, and the file and lines where it
-  goes wrong
-- the version (the release tag the consumer pins), or the commit
+- the tool or hook affected and the OpenCode version, and the file and lines
+  where it goes wrong
+- the version (the npm version the consumer pins), or the commit
 - the steps to reproduce it
 
 ## What opencode-model-fallback trusts
@@ -26,9 +27,9 @@ A useful report says:
 - **The tools run as you.** A tool reaches whatever it reaches with the
   credentials of the person running the agent, and can do no more than they
   may.
-- **The harness decides what runs.** A tool that writes is marked as one, and
-  asks for confirmation where the harness offers a way to ask; the harness's
-  own approval settings decide whether a call runs.
+- **OpenCode decides what runs.** A tool that writes is marked as one, and
+  the plugin asks OpenCode for permission before it runs; OpenCode's own
+  permission rules decide whether a call runs.
 - **Content a tool reads is untrusted.** Text read from files or services is
   data for the agent, never instructions to it.
 
@@ -47,8 +48,8 @@ Out of scope:
 - What an agent does with a tool after the person running it approved the
   call, including changes that are wrong. Review its work as you would
   anyone's.
-- A harness configured to approve every call unasked.
-- Flaws in a harness or a runtime; report those to their maintainers.
+- OpenCode configured to approve every call unasked.
+- Flaws in OpenCode or a runtime; report those to their maintainers.
 
 Hardening ideas that are not vulnerabilities are welcome as ordinary issues.
 

@@ -21,9 +21,6 @@ concurrency:
 env:
   # Let Corepack download the pinned pnpm without an interactive prompt.
   COREPACK_ENABLE_DOWNLOAD_PROMPT: 0
-  # The commit of Hermes Agent whose plugin scanner checks the release tree is
-  # pinned; raise it deliberately.
-  HERMES_AGENT_COMMIT: af5c2014a84eb364fb07a9366da4f2df5a61e185
 
 jobs:
   check:
@@ -45,11 +42,6 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
-      # The Hermes plugin is Python, standard library only.
-      - name: Use Python
-        uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
       - name: Enable pnpm
         run: corepack enable
       - name: Install dependencies
@@ -60,50 +52,57 @@ jobs:
         run: pnpm run typecheck
       - name: Test
         run: pnpm test
-      - name: Test the Hermes plugin
-        run: python -m unittest discover -s src/hermes/tests
       - name: Build
         run: pnpm run build
-      - name: Check the plugin manifest
-        run: pnpm run manifests:check
-      - name: Smoke test the MCP server, the plugin and the CLI under Node
+      - name: Smoke test the plugin under Node
         run: pnpm run smoke
-      # Hermes scans a plugin when it installs it, and only a `safe` verdict
-      # installs unattended. Its own scanner runs here on the tree a release
-      # tag carries, the repository's files and `dist/`, and fails otherwise.
-      - name: Check out the Hermes plugin scanner
-        uses: actions/checkout@v7
+
+  # Loads the built plugin into each OpenCode version the README lists, to
+  # catch a change in OpenCode before a person reports it.
+  load:
+    name: Load into OpenCode ${{ matrix.opencode }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        opencode: ["2.1.2", "2.3.0"]
+    steps:
+      - uses: actions/checkout@v7
         with:
-          repository: NousResearch/hermes-agent
-          ref: ${{ env.HERMES_AGENT_COMMIT }}
-          path: .hermes-agent
-          sparse-checkout: tools
           persist-credentials: false
-      - name: Test the Hermes install scan
-        env:
-          HERMES_AGENT_DIR: ${{ github.workspace }}/.hermes-agent
-        run: python -m unittest discover -s scripts -p 'test_*.py'
-      - name: Scan the release tree as Hermes does on install
+      - name: Use Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      # npm, not pnpm: pnpm may block the install script that picks the binary.
+      - name: Install OpenCode ${{ matrix.opencode }}
         run: |
-          set -o pipefail
-          tree="$RUNNER_TEMP/release-tree"
-          mkdir -p "$tree/dist"
-          git archive HEAD | tar -x -C "$tree"
-          cp -R dist/. "$tree/dist/"
-          python scripts/hermes_scan.py --scanner "$GITHUB_WORKSPACE/.hermes-agent" "$tree"
+          npm install --no-audit --no-fund --prefix "$RUNNER_TEMP/opencode" "@opencode/cli@${{ matrix.opencode }}"
+          test "$("$RUNNER_TEMP/opencode/node_modules/.bin/opencode" --version)" = "opencode v${{ matrix.opencode }}"
+      - name: Load the plugin into OpenCode
+        run: node scripts/opencode-load.mjs "$RUNNER_TEMP/opencode/node_modules/.bin/opencode" . "$RUNNER_TEMP/opencode-load"
 
   # The one check the protection of main requires (`repo-kit setup github
   # --required-check`), so jobs can be added or renamed without touching it.
   required:
     name: Required checks
     if: always()
-    needs: [check]
+    needs: [check, load]
     runs-on: ubuntu-latest
     steps:
       - name: Verify required jobs
         env:
           CHECK_RESULT: ${{ needs.check.result }}
+          LOAD_RESULT: ${{ needs.load.result }}
         run: |
-          if [[ "$CHECK_RESULT" != "success" ]]; then
+          if [[ "$CHECK_RESULT" != "success" || "$LOAD_RESULT" != "success" ]]; then
             exit 1
           fi
