@@ -281,6 +281,65 @@ is left (a usage plugin, a file, a provider's API) answers `usable` with
 after included usage, list the paid step after the included ones in the route:
 a route's order is the whole policy.
 
+### Hearing each limit
+
+When the fallback takes an error for a limit, it tells every plugin that
+listens, through the event `limited` of a second definition, `LIMITS_RPC`, also
+exported from `@craftsamo/opencode-model-fallback/rpc`:
+
+```text
+{ session_id, agent, model, kind, until, wait_ms?, reason? }
+```
+
+`model` is the step that hit the limit (`provider/model#variant`), `kind` is
+`quota`, `rate` or `consumer` (a limit your `limit` handler named, with its
+`reason`), `until` is the end of its cooldown as an ISO time and `wait_ms` the
+wait the limit carried, when it had one; `agent` is empty when OpenCode names
+none. It comes once for each limit, after the model is cooled down. A
+listener gets OpenCode's event envelope, with these fields under `data` (and
+`type`, `rpc.opencode-model-fallback.limits.limited`, beside it).
+
+Use it when a window is shared in a way only your setup knows, such as two
+logins of one provider whose models are routed to different accounts: note the
+end for the steps that share the spent window, and answer `usable` with
+`{ usable: false }` for them until then.
+
+```js
+import { LIMITS_RPC, STEPS_RPC } from "@craftsamo/opencode-model-fallback/rpc"
+
+/** The account each model runs on, as this setup knows it. */
+const accountOf = (model) => (model.includes("-work") ? "work" : "home")
+
+export default {
+  id: "shared-windows",
+  async setup(ctx) {
+    const spentUntil = new Map()
+    const unsubscribe = ctx.rpc(LIMITS_RPC).events.on("limited", ({ data }) => {
+      spentUntil.set(accountOf(data.model), Date.parse(data.until))
+    })
+    const registration = await ctx.rpc.register(STEPS_RPC, {
+      async usable({ model }) {
+        const until = spentUntil.get(accountOf(model)) ?? 0
+        return until > Date.now() ? { usable: false, reason: "its account's window is spent" } : { usable: true }
+      },
+      async limit() {
+        return { limit: false }
+      },
+    })
+    return async () => {
+      unsubscribe()
+      await registration.dispose()
+    }
+  },
+}
+```
+
+The event is live only: a plugin hears the limits found after it subscribed,
+so subscribe in `setup`. A handler that throws ends its subscription, so catch
+inside it. An event that cannot be sent is dropped, and nothing the fallback
+does waits on it. A host that cannot register the definition keeps the event
+off and says so once, in the notice of the first launch.
+
 ## Beside other plugins
 
 OpenCode runs every `retry` hook on the same event in the order the hooks were
