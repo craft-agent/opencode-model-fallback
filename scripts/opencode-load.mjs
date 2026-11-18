@@ -13,6 +13,7 @@ import { spawn } from "node:child_process"
 import { randomBytes } from "node:crypto"
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
+import { isDeepStrictEqual } from "node:util"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 const [binary, packageArg, scratchArg] = process.argv.slice(2)
@@ -49,6 +50,7 @@ const REQUIRED_MEMBERS = {
   "session.switchModel": "function",
   "session.update": "function",
   "tool.transform": "function",
+  "rpc.register": "function",
   "agent.get": "function",
   "model.list": "function",
 }
@@ -57,6 +59,9 @@ const RPC_ANSWERS = {
   usable: { usable: false, reason: "probe" },
   limit: { limit: true, wait_ms: 1 },
 }
+/** The type and payload of the event the probe sends itself through its own RPC definition. */
+const PING_TYPE = "rpc.ci.load-probe.events.ping"
+const PING_DATA = { n: 1 }
 /** Session hooks the plugin registers. OpenCode resolves a registration even for an unknown name. */
 const REQUIRED_HOOKS = ["retry", "http.request", "context"]
 
@@ -217,6 +222,14 @@ try {
     failures.push(`a call to an unregistered RPC did not reject: ${JSON.stringify(none)}`)
   else console.log(`RPC: a call with no plugin registered rejects with type ${none.type}.`)
   if (report?.rpc?.error !== undefined) failures.push(`the RPC probe failed: ${report.rpc.error}`)
+  // A listener gets the bus envelope, the payload under `data`; the README's example relies on it.
+  const roundTrip = report?.events?.round_trip
+  const envelope = roundTrip?.received
+  if (envelope?.type !== PING_TYPE || !isDeepStrictEqual(envelope?.data, PING_DATA))
+    failures.push(`the RPC event round trip failed: ${JSON.stringify(roundTrip ?? report?.events)}`)
+  else console.log(`RPC events: a probe event made a round trip, as ${PING_TYPE} with its payload under data.`)
+  if (report?.events?.limits_subscribe?.ok !== true)
+    failures.push(`subscribing to the limited event failed: ${JSON.stringify(report?.events?.limits_subscribe)}`)
   if (JSON.stringify(report?.order) !== JSON.stringify(EXPECTED_ORDER))
     failures.push(`the plugins started in the order ${JSON.stringify(report?.order)}, not ${EXPECTED_ORDER.join(", ")}`)
   else console.log(`Plugins started in list order: ${report.order.join(", ")}.`)

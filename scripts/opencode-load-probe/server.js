@@ -15,6 +15,7 @@ const MEMBERS = [
   "session.update",
   "tool.transform",
   "rpc",
+  "rpc.register",
   "agent.get",
   "model.list",
 ]
@@ -34,6 +35,22 @@ const ORDER_KEY = Symbol.for("opencode-model-fallback.ci.load-order")
 /** How long one call into the host may take before the probe records it as failed. */
 const CALL_TIMEOUT_MS = 5000
 
+/** How long the probe emits its event before it gives up on a handler being attached. */
+const EVENT_WAIT_MS = 2000
+/** The pause between two emits of the probe event. */
+const EVENT_RETRY_MS = 100
+
+/** A hand-written Standard Schema that accepts any object. */
+const OBJECT_SCHEMA = {
+  "~standard": {
+    version: 1,
+    vendor: "ci.load-probe",
+    validate: (value) =>
+      typeof value === "object" && value !== null ? { value } : { issues: [{ message: "expected an object" }] },
+  },
+}
+
+const sleep = (ms) => new Promise((done) => setTimeout(done, ms))
 const kind = (value) => (value === null ? "null" : typeof value)
 const message = (error) => String(error?.message ?? error).slice(0, 300)
 const within = (promise, ms) =>
@@ -104,6 +121,7 @@ export default {
     }
 
     report.rpc = await probeRpc(ctx, ctx.options?.rpc)
+    report.events = await probeEvents(ctx, ctx.options?.rpc)
     report.done = true
     save()
   },
@@ -145,6 +163,56 @@ async function probeRpc(ctx, path) {
     rpc.disposeError = message(error)
   }
   return rpc
+}
+
+/**
+ * Proves the event side of RPC on this OpenCode: subscribes to the package's
+ * `limited` event (only that subscribing does not throw), then registers a
+ * definition of its own, subscribes to its `ping` event and emits until the
+ * handler has received one. Every step is recorded as it went, or as its error.
+ */
+async function probeEvents(ctx, path) {
+  const events = {}
+  let registration
+  let unsubscribeLimits
+  let unsubscribePing
+  try {
+    const { LIMITS_RPC } = await import(pathToFileURL(path).href)
+    try {
+      unsubscribeLimits = ctx.rpc(LIMITS_RPC).events.on("limited", () => {})
+      events.limits_subscribe = { ok: true }
+    } catch (error) {
+      events.limits_subscribe = { ok: false, error: message(error) }
+    }
+    const definition = {
+      id: "ci.load-probe.events",
+      methods: {},
+      events: { ping: { schema: OBJECT_SCHEMA } },
+    }
+    registration = await within(ctx.rpc.register(definition, {}), CALL_TIMEOUT_MS)
+    const received = []
+    unsubscribePing = ctx.rpc(definition).events.on("ping", (data) => received.push(data))
+    const until = Date.now() + EVENT_WAIT_MS
+    while (received.length === 0 && Date.now() < until) {
+      await within(Promise.resolve(registration.events.emit("ping", { n: 1 })), CALL_TIMEOUT_MS)
+      await sleep(EVENT_RETRY_MS)
+    }
+    events.round_trip =
+      received.length > 0 ? { received: received[0] } : { error: `no event arrived within ${EVENT_WAIT_MS}ms` }
+  } catch (error) {
+    events.round_trip = { error: message(error) }
+  }
+  for (const stop of [unsubscribeLimits, unsubscribePing]) {
+    try {
+      await stop?.()
+    } catch {}
+  }
+  try {
+    await registration?.dispose?.()
+  } catch (error) {
+    events.disposeError = message(error)
+  }
+  return events
 }
 
 /** What `call` resolves to as `{ value }`, or the error it rejects with as `{ type, error }`. */
