@@ -60,6 +60,24 @@ export type StepsLimitOutput = {
   reason?: string
 }
 
+/** What the fallback announces when a retry event shows a limit: the model has been cooled down. */
+export type LimitedEvent = {
+  /** The session whose model hit the limit. */
+  session_id: string
+  /** The agent whose model failed; empty when OpenCode names none for the event. */
+  agent: string
+  /** The model that hit the limit, `provider/model#variant`. */
+  model: string
+  /** `quota` or `rate` by the fallback's own rule, `consumer` when a plugin named the limit. */
+  kind: "quota" | "rate" | "consumer"
+  /** When the model's cooldown ends, as an ISO time. */
+  until: string
+  /** The wait the limit carried, in milliseconds; absent when it carried none. */
+  wait_ms?: number
+  /** The reason a consumer gave for a `consumer` limit. */
+  reason?: string
+}
+
 /** The handlers a plugin registers for `STEPS_RPC`, one for each question. */
 export type StepsHandlers = {
   usable(input: StepsUsableInput, context: { signal: AbortSignal }): Promise<StepsUsableOutput> | StepsUsableOutput
@@ -69,7 +87,14 @@ export type StepsHandlers = {
 /** The RPC id the fallback asks under: `opencode-model-fallback.steps`. */
 export const STEPS_RPC_ID = "opencode-model-fallback.steps"
 
+/** The RPC id the fallback announces limits under: `opencode-model-fallback.limits`. */
+export const LIMITS_RPC_ID = "opencode-model-fallback.limits"
+
+/** The name of the event `LIMITS_RPC` emits for each limit. */
+export const LIMITED_EVENT = "limited"
+
 const VENDOR = "opencode-model-fallback"
+const LIMIT_KINDS: readonly LimitedEvent["kind"][] = ["quota", "rate", "consumer"]
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -137,6 +162,19 @@ function checkLimitOutput(value: unknown): string | undefined {
   return checkOptionalNumber(value, "wait_ms", true) ?? checkOptionalString(value, "reason")
 }
 
+function checkLimitedEvent(value: unknown): string | undefined {
+  if (!isRecord(value)) return "event must be an object"
+  if (!LIMIT_KINDS.includes(value.kind as LimitedEvent["kind"])) return `kind must be one of ${LIMIT_KINDS.join(", ")}`
+  return (
+    checkString(value, "session_id") ??
+    checkString(value, "agent") ??
+    checkString(value, "model") ??
+    checkString(value, "until") ??
+    checkOptionalNumber(value, "wait_ms", true) ??
+    checkOptionalString(value, "reason")
+  )
+}
+
 /**
  * The definition of the RPC a plugin registers against to answer the fallback:
  *
@@ -166,4 +204,24 @@ export const STEPS_RPC = {
     },
   },
   events: {},
+} as const
+
+/**
+ * The definition of the RPC the fallback registers to announce limits. It
+ * emits `limited` once for each retry event it takes for a limit, after the
+ * model has been cooled down. A consumer listens with
+ * `ctx.rpc(LIMITS_RPC).events.on("limited", handler)`, whose handler gets
+ * OpenCode's event envelope with the `LimitedEvent` under `data`; events are
+ * live only, so one emitted before the listener is attached is not replayed.
+ *
+ * It is a definition apart from `STEPS_RPC` because only the plugin that
+ * registers a definition can emit its events, and registering `STEPS_RPC` here
+ * would replace the handlers a consumer registered for it.
+ */
+export const LIMITS_RPC = {
+  id: LIMITS_RPC_ID,
+  methods: {},
+  events: {
+    [LIMITED_EVENT]: { schema: schema<LimitedEvent>(checkLimitedEvent) },
+  },
 } as const

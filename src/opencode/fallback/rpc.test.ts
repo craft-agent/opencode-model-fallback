@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { ownedKey } from "./notice"
-import { STEPS_RPC, STEPS_RPC_ID, type StepsSchema } from "./rpc"
+import { LIMITS_RPC, LIMITS_RPC_ID, STEPS_RPC, STEPS_RPC_ID, type LimitedEvent, type StepsSchema } from "./rpc"
 
 const STEP = { agent: "worker", model: "a/x#high" }
 const ERROR = { type: "provider.auth", message: "bad key" }
@@ -107,5 +107,52 @@ describe("limit", () => {
     ["no object", undefined],
   ])("refuses an output of %s", (_name, value) => {
     expect(check(output, value).ok).toBe(false)
+  })
+})
+
+describe("LIMITS_RPC", () => {
+  const { schema } = LIMITS_RPC.events.limited
+  const MINIMAL: LimitedEvent = {
+    session_id: "ses_1",
+    agent: "",
+    model: "a/x#high",
+    kind: "quota",
+    until: "2027-01-15T08:00:00.000Z",
+  }
+
+  test("is registered under the plugin's own key, with one event and no methods", () => {
+    expect<string>(LIMITS_RPC.id).toBe(ownedKey("limits"))
+    expect(LIMITS_RPC_ID).toBe(LIMITS_RPC.id)
+    expect(LIMITS_RPC.methods).toEqual({})
+    expect(Object.keys(LIMITS_RPC.events)).toEqual(["limited"])
+    expect(schema["~standard"].vendor).toBe("opencode-model-fallback")
+  })
+
+  test("takes a full event and a minimal one, and hands the value back as it is", () => {
+    const full: LimitedEvent = {
+      ...MINIMAL,
+      agent: "worker",
+      kind: "consumer",
+      wait_ms: 60_000,
+      reason: "balance is empty",
+    }
+    expect(check(schema, full)).toEqual({ ok: true, value: full })
+    expect(check(schema, MINIMAL)).toEqual({ ok: true, value: MINIMAL })
+  })
+
+  test.each([
+    ["a kind it does not know", { ...MINIMAL, kind: "other" }],
+    ["no kind", { ...MINIMAL, kind: undefined }],
+    ["no session", { ...MINIMAL, session_id: undefined }],
+    ["no agent", { ...MINIMAL, agent: undefined }],
+    ["no model", { ...MINIMAL, model: undefined }],
+    ["an end that is not text", { ...MINIMAL, until: 1 }],
+    ["a negative wait", { ...MINIMAL, wait_ms: -1 }],
+    ["a wait that is not finite", { ...MINIMAL, wait_ms: Infinity }],
+    ["a wait that is not a number", { ...MINIMAL, wait_ms: "1" }],
+    ["a reason that is not text", { ...MINIMAL, reason: [] }],
+    ["no object", "quota"],
+  ])("refuses an event of %s", (_name, value) => {
+    expect(check(schema, value).ok).toBe(false)
   })
 })
