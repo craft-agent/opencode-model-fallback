@@ -1,7 +1,7 @@
 import type { V2Context } from "../types"
 import { askLimit } from "./consumer"
 import type { Feature } from "./feature"
-import { readLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
+import { providerWait, readLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
 import type { FallbackState } from "./state"
 
 /** The limit each retry event showed when it was first read, `undefined` for an event that showed none; held as the promise, so every caller shares one answer and one call to a consumer. */
@@ -10,7 +10,7 @@ const read = new WeakMap<object, Promise<Limit | undefined>>()
 /** The limit a consumer's plugin names in an error the package's own rule does not take for one; no answer, and an answer of no limit, are `undefined`. */
 async function consumerLimit(ctx: V2Context, event: RetryEvent): Promise<Limit | undefined> {
   const agent = typeof event.agent === "string" ? event.agent : ""
-  const answer = await askLimit(ctx, agent, event.model, event.error, reportedDelay(event))
+  const answer = await askLimit(ctx, agent, event.model, event.error, reportedDelay(event), providerWait(event))
   if (answer?.limit !== true) return undefined
   return {
     kind: "consumer",
@@ -30,10 +30,11 @@ async function findLimit(ctx: V2Context, state: FallbackState, event: RetryEvent
 /**
  * Reads the limit of a retry event and cools its model down, once per event: a
  * later call for the same event answers what the first read, so the cooldown
- * comes from OpenCode's own decision whichever handler sees the event first,
- * even after another has changed the decision. Where the package's own rule
- * sees no limit, a consumer's plugin is asked whether the error is one (see
- * `rpc.ts`), with the wait of OpenCode's decision as it stood then; its
+ * comes from the provider's wait and OpenCode's own decision whichever handler
+ * sees the event first, even after another has changed the decision. Where the
+ * package's own rule sees no limit, a consumer's plugin is asked whether the
+ * error is one (see `rpc.ts`), with the wait of OpenCode's decision as it
+ * stood then and the wait the provider asked for; its
  * answer is the limit, and the package's own limits never ask it.
  */
 export function coolOnLimit(ctx: V2Context, state: FallbackState, event: RetryEvent): Promise<Limit | undefined> {

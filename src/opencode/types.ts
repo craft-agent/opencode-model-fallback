@@ -112,6 +112,8 @@ export type V2SessionHooks = {
       status?: number
       message: string
       response?: { body?: string }
+      /** The wait the provider asked for, in milliseconds, as OpenCode recorded it; no hook changes it. */
+      retryAfterMs?: number
     }
     decision: { retry: false } | { retry: true; delay: number }
   }

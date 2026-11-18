@@ -6,6 +6,7 @@ const STEP = { providerID: "a", id: "x", variant: "high" }
 const ERROR = { type: "provider.auth", status: 401, message: "bad key", response: { body: "denied" } }
 /** A timeout short enough to wait out in a test. */
 const SHORT_MS = 20
+const HOUR_MS = 3_600_000
 
 /** Asks `usable` of a fake host with `rpc` handlers, within `SHORT_MS`. */
 function usable(rpc: FakeOptions["rpc"], fake: FakeOptions = {}) {
@@ -115,23 +116,38 @@ describe("the question usable", () => {
 
 describe("the question limit", () => {
   /** Asks `limit` of a fake host with `rpc` handlers. */
-  function limit(rpc: FakeOptions["rpc"], waitMs?: number, error: unknown = ERROR) {
+  function limit(rpc: FakeOptions["rpc"], waitMs?: number, error: unknown = ERROR, retryAfterMs?: number) {
     const host = fakeContext({ rpc })
-    return { host, answer: askLimit(host.ctx, "worker", STEP, error as never, waitMs, SHORT_MS) }
+    return { host, answer: askLimit(host.ctx, "worker", STEP, error as never, waitMs, retryAfterMs, SHORT_MS) }
   }
 
-  test("puts the agent, the model, the error as the schema has it and the wait OpenCode reported", async () => {
-    const { host, answer } = limit({ limit: () => ({ limit: true, wait_ms: 5_000, reason: "empty" }) }, 90_000)
+  test("puts the agent, the model, the error as the schema has it and the waits OpenCode and the provider gave", async () => {
+    const { host, answer } = limit(
+      { limit: () => ({ limit: true, wait_ms: 5_000, reason: "empty" }) },
+      90_000,
+      ERROR,
+      HOUR_MS,
+    )
     expect(await answer).toEqual({ limit: true, wait_ms: 5_000, reason: "empty" })
     expect(host.rpcCalls[0]!.input).toEqual({
       agent: "worker",
       model: "a/x#high",
       error: { type: "provider.auth", status: 401, message: "bad key", body: "denied" },
       wait_ms: 90_000,
+      retry_after_ms: HOUR_MS,
     })
   })
 
-  test("leaves out the status, the body and the wait that are not there", async () => {
+  test("sends a provider wait of none as zero, and leaves it out when the provider named none", async () => {
+    const zero = limit({ limit: () => ({ limit: false }) }, undefined, ERROR, 0)
+    await zero.answer
+    expect(zero.host.rpcCalls[0]!.input).toHaveProperty("retry_after_ms", 0)
+    const none = limit({ limit: () => ({ limit: false }) }, 90_000)
+    await none.answer
+    expect(none.host.rpcCalls[0]!.input).not.toHaveProperty("retry_after_ms")
+  })
+
+  test("leaves out the status, the body and the waits that are not there", async () => {
     const { host, answer } = limit({ limit: () => ({ limit: false }) }, undefined, { type: "x", message: "m" })
     expect(await answer).toEqual({ limit: false })
     expect(host.rpcCalls[0]!.input).toEqual({ agent: "worker", model: "a/x#high", error: { type: "x", message: "m" } })

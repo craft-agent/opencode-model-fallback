@@ -85,13 +85,14 @@ export async function askUsable(
   return tidyAnswer(await ask(ctx, "usable", STEPS_RPC.methods.usable, input, timeoutMs))
 }
 
-/** Asks the consumer whether `error` of `model` is a limit, with the wait OpenCode would make before it retried (`waitMs`, when it will); `undefined` is no answer, which counts as not a limit. */
+/** Asks the consumer whether `error` of `model` is a limit, with the wait OpenCode would make before it retried (`waitMs`, when it will) and the wait the provider asked for (`retryAfterMs`, when it named one); `undefined` is no answer, which counts as not a limit. */
 export async function askLimit(
   ctx: V2Context,
   agent: string,
   model: V2ModelRef,
   error: RetryEvent["error"],
   waitMs: number | undefined,
+  retryAfterMs: number | undefined,
   timeoutMs = RPC_TIMEOUT_MS,
 ): Promise<StepsLimitOutput | undefined> {
   const input = (): StepsLimitInput => ({
@@ -104,6 +105,7 @@ export async function askLimit(
       ...(error.response?.body !== undefined && { body: error.response.body }),
     },
     ...(waitMs !== undefined && { wait_ms: waitMs }),
+    ...(retryAfterMs !== undefined && { retry_after_ms: retryAfterMs }),
   })
   return tidyAnswer(await ask(ctx, "limit", STEPS_RPC.methods.limit, input, timeoutMs))
 }

@@ -69,6 +69,8 @@ describe("limit", () => {
   test("takes the error with its optional status and body, and an optional wait", () => {
     expect(check(input, { ...STEP, error: ERROR }).ok).toBe(true)
     expect(check(input, { ...STEP, error: { ...ERROR, status: 429, body: "{}" }, wait_ms: 0 }).ok).toBe(true)
+    expect(check(input, { ...STEP, error: ERROR, wait_ms: 1, retry_after_ms: 0 }).ok).toBe(true)
+    expect(check(input, { ...STEP, error: ERROR, retry_after_ms: 3_600_000 }).ok).toBe(true)
   })
 
   test.each([
@@ -82,6 +84,9 @@ describe("limit", () => {
     ["a negative wait", { ...STEP, error: ERROR, wait_ms: -1 }],
     ["a wait that is not finite", { ...STEP, error: ERROR, wait_ms: NaN }],
     ["a wait that is not a number", { ...STEP, error: ERROR, wait_ms: "1" }],
+    ["a negative provider wait", { ...STEP, error: ERROR, retry_after_ms: -1 }],
+    ["a provider wait that is not finite", { ...STEP, error: ERROR, retry_after_ms: Infinity }],
+    ["a provider wait that is not a number", { ...STEP, error: ERROR, retry_after_ms: "1" }],
     ["no agent", { model: "a/x", error: ERROR }],
     ["no model", { agent: "worker", error: ERROR }],
   ])("refuses an input of %s", (_name, value) => {

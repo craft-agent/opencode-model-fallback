@@ -46,6 +46,8 @@ export type StepsLimitInput = {
   }
   /** The wait before OpenCode would retry, in milliseconds; absent when it will not retry or will retry at once. */
   wait_ms?: number
+  /** The wait the provider asked for, in milliseconds; absent when it named none. */
+  retry_after_ms?: number
 }
 
 /** The answer to `limit`. */
@@ -124,7 +126,8 @@ function checkLimitInput(value: unknown): string | undefined {
     checkString(error, "message") ??
     checkOptionalNumber(error, "status", false) ??
     checkOptionalString(error, "body") ??
-    checkOptionalNumber(value, "wait_ms", true)
+    checkOptionalNumber(value, "wait_ms", true) ??
+    checkOptionalNumber(value, "retry_after_ms", true)
   )
 }
 
