@@ -599,6 +599,16 @@ not used.
   would move (a routed agent on a step of its route) whose rate limit is not a
   limit, but whose decision another plugin stretched past `max_wait_ms`,
   retries after `max_wait_ms`. Other sessions keep the decision as it is.
+- **A cooldown covers a model, or with `cooldown_scope: "provider"` its whole
+  provider.** A usage window usually belongs to an account, so a limit on one
+  model refuses the provider's other models too; scoped to the model, each of
+  them costs a refused request before it is passed over. The default stays
+  `model`, the side that changes the least. A provider holding several
+  accounts needs a finer split than either, which only the consumer knows.
+- **A provider's cooldown is saved as `<provider>/*`.** It is read as a model
+  whose ID is `*`, so a version without the setting loads the file and passes
+  nothing over for it, and one with the setting loads files written before
+  it.
 
 ### State
 
