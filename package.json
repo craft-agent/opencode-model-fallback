@@ -15,7 +15,10 @@
   "exports": {
     ".": "./dist/opencode.js",
     "./opencode": "./dist/opencode.js",
-    "./rpc": "./dist/rpc.js"
+    "./rpc": {
+      "types": "./dist/rpc.d.ts",
+      "default": "./dist/rpc.js"
+    }
   },
   "files": [
     "dist",
@@ -26,7 +29,8 @@
     "provenance": true
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/build.mjs && tsc -p tsconfig.rpc.json",
+    "typecheck:rpc": "tsc -p scripts/rpc-types-check",
     "smoke": "node scripts/smoke-opencode.mjs",
     "load:opencode": "node scripts/opencode-load.mjs",
     "test": "bun test --pass-with-no-tests --timeout 30000",

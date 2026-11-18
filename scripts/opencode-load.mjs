@@ -68,8 +68,8 @@ const REQUIRED_HOOKS = ["retry", "http.request", "context"]
 const manifest = JSON.parse(readFileSync(join(PACKAGE, "package.json"), "utf8"))
 const entry = pathToFileURL(join(PACKAGE, manifest.exports?.["."] ?? manifest.main)).href
 const { default: plugin } = await import(entry)
-/** The built `rpc.js` the probe registers handlers from, as the package exports it. */
-const RPC_ENTRY = join(PACKAGE, manifest.exports["./rpc"])
+/** The built `rpc.js` the probe registers handlers from, as the package exports it (its `default` condition beside `types`). */
+const RPC_ENTRY = join(PACKAGE, manifest.exports["./rpc"].default)
 
 rmSync(SCRATCH, { recursive: true, force: true })
 for (const dir of [SHIM, WORK, join(HOME, "tmp")]) mkdirSync(dir, { recursive: true })

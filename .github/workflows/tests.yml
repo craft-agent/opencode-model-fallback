@@ -54,6 +54,8 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm run build
+      - name: Typecheck the rpc declarations as a consumer
+        run: pnpm run typecheck:rpc
       - name: Smoke test the plugin under Node
         run: pnpm run smoke
 
