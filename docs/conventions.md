@@ -647,6 +647,20 @@ not used.
   until one is usable; `limit` only of an error the package's own rule does not
   take for a limit, once per retry event. A consumer can pass a step over or
   name a limit; it cannot make a step usable that the package's checks refused.
+- **A consumer hears each limit as an event**, `limited` of the RPC
+  `opencode-model-fallback.limits` (`LIMITS_RPC`, exported beside
+  `STEPS_RPC`), so it can pass over the steps that share the spent window
+  through `usable`: which ones do is the consumer's knowledge, not a rule the
+  package could hold. One event per retry event taken for a limit, after the
+  model is cooled: `{ session_id, agent, model, kind, until, wait_ms?,
+reason? }`, `until` the cooldown's end as an ISO time.
+- **The event has a definition of its own.** Only the plugin that registers
+  a definition can emit its events, and registering `STEPS_RPC` would take the
+  consumer's handlers' place. `LIMITS_RPC` has no methods.
+- **An event is a courtesy, never a step of a decision.** It is live only (a
+  listener misses what was emitted before it subscribed), an emit that fails
+  is dropped, and a host that cannot register the definition keeps the event
+  off with one notice; launches, moves and cooldowns go on as without it.
 
 ### OpenCode versions
 
