@@ -1,7 +1,7 @@
-import type { V2Context, V2ModelRef } from "../types"
+import type { V2Context, V2ModelRef, V2Session } from "../types"
 import { askUsable } from "./consumer"
 import type { Feature, FeatureApi } from "./feature"
-import type { Limit, RetryEvent } from "./limit"
+import { isRateLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
 import { coolOnLimit } from "./limits"
 import { selectAskedStep } from "./launch.select"
 import { withMove, type MoveRecord } from "./moves.record"
@@ -41,6 +41,40 @@ async function recordMove(
   }
 }
 
+/** A session with its agent, that agent's route (`steps`) and the index of its model on it (`place`). */
+type PlacedSession = { session: V2Session; agent: string; steps: readonly V2ModelRef[]; place: number }
+
+/** The session of a retry event, placed on its agent's route; `undefined` when the agent has no route or the model is off it. */
+async function placeSession(ctx: V2Context, table: RouteTable, event: RetryEvent): Promise<PlacedSession | undefined> {
+  const named = typeof event.agent === "string" && event.agent !== "" ? event.agent : undefined
+  if (named !== undefined && !hasRoute(table, named)) return undefined
+  const session = await ctx.session.get({ sessionID: event.sessionID })
+  const agent = named ?? session.agent
+  if (!hasRoute(table, agent)) return undefined
+  const steps = table[agent]!
+  const place = placeOf(steps, event.model)
+  return place < 0 ? undefined : { session, agent, steps, place }
+}
+
+/**
+ * Cuts the wait of a rate limit that is no limit by `max_wait_ms` but that
+ * another plugin stretched past it, for a session the fallback would move:
+ * it retries after `max_wait_ms`. Nothing else is touched, and nothing is
+ * recorded.
+ */
+async function shortenStretchedWait(
+  ctx: V2Context,
+  api: FeatureApi,
+  table: RouteTable,
+  event: RetryEvent,
+): Promise<void> {
+  const { maxWaitMs } = api.state.settings
+  const delay = reportedDelay(event)
+  if (!isRateLimit(event) || delay === undefined || delay <= maxWaitMs) return
+  if (!(await placeSession(ctx, table, event))) return
+  event.decision = { retry: true, delay: maxWaitMs }
+}
+
 /**
  * Moves the session of a retry event that shows a limit to the next usable
  * step of its agent's route, or stops a child that has none. Anything that
@@ -56,15 +90,11 @@ async function moveOnLimit(
   limit: Limit,
 ): Promise<void> {
   const { sessionID, model } = event
-  const named = typeof event.agent === "string" && event.agent !== "" ? event.agent : undefined
-  if (named !== undefined && !hasRoute(table, named)) return
-  const session = await ctx.session.get({ sessionID })
-  const agent = named ?? session.agent
-  if (!hasRoute(table, agent)) return
-  const steps = table[agent]!
-  const place = placeOf(steps, model)
+  const placed = await placeSession(ctx, table, event)
+  if (!placed) return
+  const { session, agent, steps, place } = placed
   const directory = session.location?.directory
-  if (place < 0 || !directory) return
+  if (!directory) return
   const catalog = (await ctx.model!.list!({ location: { directory } })).data
   const { cooldowns, now } = api.state
   const { chosen } = await selectAskedStep(
@@ -96,7 +126,9 @@ async function moveOnLimit(
  * limit: the retry goes on at once on that step. A child with no step left
  * stops retrying. The limited model is cooled down first, from OpenCode's own
  * decision, as the `limits` feature does, so the cooldown is the same
- * whichever of the two handlers sees the event first.
+ * whichever of the two handlers sees the event first. A rate limit that is no
+ * limit but whose wait another plugin stretched past `max_wait_ms`, on a
+ * session that would move, retries after `max_wait_ms` instead.
  */
 export const MOVES: Feature = {
   name: "moves",
@@ -110,6 +142,7 @@ export const MOVES: Feature = {
       try {
         const limit = await coolOnLimit(ctx, api.state, event)
         if (limit) await moveOnLimit(ctx, api, table, event, limit)
+        else await shortenStretchedWait(ctx, api, table, event)
       } catch {
         // The fallback never breaks a retry: OpenCode decides as it would have.
       }
