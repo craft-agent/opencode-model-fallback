@@ -269,9 +269,15 @@ export default {
 
 Load it beside the fallback in `opencode.json`; for the RPC the order does not
 matter, since the fallback looks for an answering plugin at each question. The
-last plugin to register for the RPC wins. The package ships no type
-declarations for the subpath yet. (A plugin that rewrites retry waits is a
+last plugin to register for the RPC wins. The subpath ships its type
+declarations (`StepsHandlers`, `LimitedEvent` and the rest), so a TypeScript
+plugin gets them without a schema library. (A plugin that rewrites retry waits is a
 different matter: see [Beside other plugins](#beside-other-plugins).)
+
+[`examples/`](examples/) holds plugins to copy and adapt, each with its tests:
+one answers `usable` from a usage file, one takes a provider's own wording for
+a limit, and one passes over the steps that share a spent window. Its README
+says how to load such a plugin, with the package installed beside it.
 
 ### Remaining usage
 
