@@ -100,15 +100,24 @@ Once `routes` is configured, the plugin watches OpenCode's retries. A model
 hits a limit when a request to it fails with:
 
 - a quota error (`provider.quota`), or
-- a rate limit (`provider.rate-limit`, or status 429) that OpenCode will retry
-  only after a wait longer than `max_wait_ms`.
+- a rate limit (`provider.rate-limit`, or status 429) whose provider asked for a
+  wait longer than `max_wait_ms`.
+
+The wait is the one the provider asked for (the error's `retryAfterMs`), not
+the wait the retry carries by the time this plugin sees it: another plugin may
+have stretched that one (see [Beside other plugins](#beside-other-plugins)). A
+rate limit whose provider names no wait is left to OpenCode for its first three
+retries; from the fourth on it is a limit when OpenCode, or a plugin before this
+one, will retry it only after more than `max_wait_ms`, so a spent window whose
+provider names no wait still moves a session.
 
 Any other error, authentication failures included, is not a limit, and a rate
-limit OpenCode retries within `max_wait_ms` is left to OpenCode.
+limit within `max_wait_ms` is left to OpenCode.
 
 A model that hit a limit cools down: launches pass over a step with that model
 (`a/x is cooling down until 2026-11-17T09:30:00.000Z` in the notice) until the
-wait OpenCode reported, else `cooldown_ms`. A model listed without a variant
+wait the provider asked for, else the wait of the retry, else `cooldown_ms`. A
+model listed without a variant
 cools down in every variant; one listed with a variant, in that variant only.
 A model that hits a limit again keeps the later end. A cooldown never changes
 OpenCode's own decision to retry; a [move](#moves) may.
@@ -190,12 +199,15 @@ fallback asks with):
   each candidate. `{ usable: false }` passes the step over, for that launch or
   move only, as `a/x is unusable: <reason>` in the notice (`a/x is unusable`
   without a reason).
-- `limit({ agent, model, error, wait_ms? })` → `{ limit, wait_ms?, reason? }`:
+- `limit({ agent, model, error, wait_ms?, retry_after_ms? })` →
+  `{ limit, wait_ms?, reason? }`:
   is this error a limit? It is asked of a failed request the fallback's own
   rule does not take for a limit (see [Cooldowns](#cooldowns)); a quota or rate
   limit it found itself is never put to you. `error` is
   `{ type, status?, message, body? }` as OpenCode reported it, and `wait_ms` is
-  the wait OpenCode's own decision gave, when it will retry after one; `agent`
+  the wait the retry carries, when it will retry after one (another plugin may
+  have stretched it); `retry_after_ms` is the wait the provider asked for, when
+  it named one; `agent`
   is empty when OpenCode names none for the retry. `{ limit: true }` cools the
   model down for `wait_ms` (the `cooldown_ms` setting when you give none, or
   zero) and moves a routed session on, with `a/x hit a limit: <reason>` as the
@@ -275,11 +287,18 @@ registered, which is the order the plugins are listed, and each may replace
 ```
 
 A plugin such as opencode-quota, whose `waitForQuotaReset` (on by default)
-replaces a limit's decision with a wait for the window's reset, up to five
-hours, must run first. Listed after this plugin, it would turn a move's
-immediate retry, or a child's stop, into that wait. Listed before it, this
-plugin has the last word, and the wait the other plugin set for a spent window
-is read as a limit and makes a good cooldown.
+replaces a rate limit's decision with a wait for the reset of a spent window of
+the provider, up to five hours, must run first. Listed after this plugin, it
+would turn a move's immediate retry, or a child's stop, into that wait. Listed
+before it, this plugin has the last word.
+
+Such a wait is not read as a limit: the window it waits for may be another
+model's (a weekly window of one model, say) while the request only hit a short
+burst. This plugin reads the wait the provider asked for instead, which no
+plugin changes. For a real limit, the stretched wait is the cooldown when the
+provider named none. A session this plugin would move (a routed agent on a step
+of its route) whose short rate limit got a stretched wait retries after
+`max_wait_ms` instead; other sessions keep the stretched wait.
 
 ## Tools and skills
 
@@ -410,7 +429,7 @@ An option wins over its environment variable.
 | `tools`         | `OPENCODE_MODEL_FALLBACK_TOOLS`         | single tools to add by ID, whatever their toolset                                                                                                          |
 | `exclude_tools` | `OPENCODE_MODEL_FALLBACK_EXCLUDE_TOOLS` | single tools to remove by ID; wins over `tools` and `toolsets`                                                                                             |
 | `language`      | `OPENCODE_MODEL_FALLBACK_LANGUAGE`      | the approval prompt's language, such as `ja`                                                                                                               |
-| `max_wait_ms`   | `OPENCODE_MODEL_FALLBACK_MAX_WAIT_MS`   | the longest wait, in milliseconds, OpenCode may ask of a rate limit before it counts as a limit; at least 0, default 10000                                 |
+| `max_wait_ms`   | `OPENCODE_MODEL_FALLBACK_MAX_WAIT_MS`   | the longest wait, in milliseconds, a provider may ask of a rate limit before it counts as a limit; at least 0, default 10000                               |
 | `cooldown_ms`   | `OPENCODE_MODEL_FALLBACK_COOLDOWN_MS`   | how long, in milliseconds, a model that hit a limit is passed over when OpenCode gave no wait; at least 1, default 3600000                                 |
 | `state_dir`     | `OPENCODE_MODEL_FALLBACK_STATE_DIR`     | where the plugin keeps its state, the cooldowns included; default `$XDG_STATE_HOME/opencode-model-fallback`, else `~/.local/state/opencode-model-fallback` |
 

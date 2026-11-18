@@ -14,7 +14,7 @@ export const PROJECT = {
   defaultToolsets: [] as readonly string[],
   /** The package's own settings, which the tools themselves read: each snake_case name and its type, with bounds when it needs them. */
   options: {
-    /** The longest wait, in milliseconds, that OpenCode may ask of a rate limit before the model counts as having hit a limit. */
+    /** The longest wait, in milliseconds, that a provider may ask of a rate limit before the model counts as having hit a limit. */
     max_wait_ms: { type: "number", min: 0 },
     /** How long, in milliseconds, a model that hit a limit is passed over when OpenCode gave no wait. */
     cooldown_ms: { type: "number", min: 1 },

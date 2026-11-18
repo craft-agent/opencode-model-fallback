@@ -1,7 +1,7 @@
 import { defaultStateDir, settingsFromOptions } from "../../entry/settings"
 import type { PluginOptions } from "../types"
 
-/** The longest wait OpenCode may ask of a rate limit before the model counts as having hit a limit, in milliseconds. */
+/** The longest wait a provider may ask of a rate limit before the model counts as having hit a limit, in milliseconds. */
 export const DEFAULT_MAX_WAIT_MS = 10_000
 
 /** How long a model that hit a limit is passed over when OpenCode gave no wait, in milliseconds: one hour. */
