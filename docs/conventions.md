@@ -573,6 +573,33 @@ not used.
 - **No default names a role, model, provider account or machine**, since a
   default is the one value every user gets.
 
+### Limits
+
+- **A limit is read from the provider, not from the decision a retry carries
+  by the time it arrives.** Every `retry` hook edits one decision in turn, and
+  a plugin listed before this one may stretch a short rate limit's wait to
+  the reset of an unrelated spent window; read that way, a burst would move a
+  session and cool its model for hours. The error's `retryAfterMs` is the
+  wait the provider asked for, and no hook changes it. One package registers
+  one plugin, so recording the decision before another plugin's hook would
+  take a second package.
+- **A quota error is a limit; a rate limit is one when its provider asked for
+  a wait longer than `max_wait_ms`.** OpenCode's own wait is its backoff
+  (at most 10 s a gap) raised to that wait, so the test is the one OpenCode's
+  own decision would give.
+- **A rate limit that names no wait counts from its fourth retry on.** The
+  first three are OpenCode's to sit out; after them the decision as it stands
+  decides, so a spent window whose provider names no wait still moves a
+  session instead of retrying for good.
+- **A cooldown lasts the provider's wait, else the decision's, else
+  `cooldown_ms`.** For a real limit, a wait another plugin set for the
+  window's reset is the best end known. A consumer's limit keeps its own
+  wait.
+- **A short limit is not left to wait out a window.** A session the fallback
+  would move (a routed agent on a step of its route) whose rate limit is not a
+  limit, but whose decision another plugin stretched past `max_wait_ms`,
+  retries after `max_wait_ms`. Other sessions keep the decision as it is.
+
 ### State
 
 - **State lives in the package's own directory**: `$XDG_STATE_HOME/opencode-model-fallback/`,
