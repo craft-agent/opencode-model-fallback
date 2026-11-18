@@ -20,6 +20,8 @@ export const PROJECT = {
     cooldown_ms: { type: "number", min: 1 },
     /** The directory where the plugin keeps its state, the cooldowns included. */
     state_dir: "path",
+    /** What a limit cools: `model` (the default) the model that hit it, `provider` that model's whole provider. */
+    cooldown_scope: "text",
   } as Readonly<Record<string, OptionSpec>>,
   /** Options only the plugin's own features read, from its configuration: they have no flag or environment variable, and the settings accept them without reading their values. */
   pluginOptions: ["routes"] as readonly string[],
