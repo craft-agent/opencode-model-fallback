@@ -1,7 +1,9 @@
 import type { V2Context } from "../types"
 import { askLimit } from "./consumer"
+import { MAX_COOLDOWN_END_MS } from "./cooldowns"
 import type { Feature } from "./feature"
 import { providerWait, readLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
+import { selector } from "./routes"
 import type { FallbackState } from "./state"
 
 /** The limit each retry event showed when it was first read, `undefined` for an event that showed none; held as the promise, so every caller shares one answer and one call to a consumer. */
@@ -23,8 +25,28 @@ async function consumerLimit(ctx: V2Context, event: RetryEvent): Promise<Limit |
 async function findLimit(ctx: V2Context, state: FallbackState, event: RetryEvent): Promise<Limit | undefined> {
   const { cooldowns, now, settings } = state
   const limit = readLimit(event, settings.maxWaitMs) ?? (await consumerLimit(ctx, event))
-  if (limit) cooldowns.cool(event.model, now() + (limit.waitMs ?? settings.cooldownMs))
+  if (!limit) return undefined
+  const end = now() + (limit.waitMs ?? settings.cooldownMs)
+  cooldowns.cool(event.model, end)
+  announce(state, event, limit, end)
   return limit
+}
+
+/** Tells `state.onLimit` of a limit cooled until `end`; a failure to tell never reaches the caller. */
+function announce(state: FallbackState, event: RetryEvent, limit: Limit, end: number): void {
+  try {
+    state.onLimit?.({
+      session_id: event.sessionID,
+      agent: typeof event.agent === "string" ? event.agent : "",
+      model: selector(event.model),
+      kind: limit.kind,
+      until: new Date(Math.min(end, MAX_COOLDOWN_END_MS)).toISOString(),
+      ...(limit.waitMs !== undefined && { wait_ms: limit.waitMs }),
+      ...(limit.reason !== undefined && { reason: limit.reason }),
+    })
+  } catch {
+    // An announcement that fails changes nothing: the cooldown is set and OpenCode decides as it would have.
+  }
 }
 
 /**

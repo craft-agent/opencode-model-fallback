@@ -54,6 +54,17 @@ describe("startFeatures", () => {
     expect(started.unavailable).toEqual([{ name: "quota", reason: "rpc is not available" }])
   })
 
+  test("finds a call that is a property of a function, and keeps the feature off when it lacks it", async () => {
+    const needing = feature("events", [], { calls: ["rpc.register"] })
+    const { ctx } = fakeContext()
+    expect((await startFeatures(ctx, [needing])).running).toEqual(["events"])
+
+    const bare = fakeContext({ omit: ["rpc.register"] })
+    const started = await startFeatures(bare.ctx, [needing])
+    expect(started.running).toEqual([])
+    expect(started.unavailable).toEqual([{ name: "events", reason: "rpc.register is not available" }])
+  })
+
   test("a feature with hooks needs session.hook", async () => {
     const { ctx } = fakeContext({ omit: ["session.hook"] })
     const started = await startFeatures(ctx, [feature("hooked", ["retry"]), feature("plain")])

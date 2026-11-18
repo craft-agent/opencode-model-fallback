@@ -92,7 +92,7 @@ describe("a host without the calls of a move", () => {
     async (missing) => {
       const host = fakeContext({ ...CATALOG_ONLY, omit: [missing] })
       const setup = await setupFallback(host.ctx, FEATURES, { env: { HOME: "/home/tester" }, persist: false })
-      expect(setup.running).toEqual(missing === "model.list" ? ["limits"] : ["launch", "limits"])
+      expect(setup.running).toEqual(missing === "model.list" ? ["events", "limits"] : ["events", "launch", "limits"])
       expect(setup.unavailable.find((feature) => feature.name === "moves")).toEqual({
         name: "moves",
         reason: `${missing} is not available`,

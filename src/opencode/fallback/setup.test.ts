@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { EVENTS } from "./events"
 import type { Feature } from "./feature"
 import { LAUNCH } from "./launch"
 import { LIMITS } from "./limits"
@@ -14,14 +15,14 @@ const FEATURE: Feature = {
 }
 
 describe("setupFallback", () => {
-  test("has the launch, limits and moves features, which register nothing with nothing configured", async () => {
-    expect(FEATURES).toEqual([LAUNCH, LIMITS, MOVES])
-    const { ctx, hooks, tools, skills, transforms } = fakeContext()
+  test("has the events, launch, limits and moves features, which register nothing with nothing configured", async () => {
+    expect(FEATURES).toEqual([EVENTS, LAUNCH, LIMITS, MOVES])
+    const { ctx, hooks, tools, skills, transforms, registered } = fakeContext()
     const setup = await setupFallback(ctx, FEATURES, { env: { HOME: "/home/tester" }, persist: false })
-    expect(setup.running).toEqual(["launch", "limits", "moves"])
+    expect(setup.running).toEqual(["events", "launch", "limits", "moves"])
     expect(setup.unavailable).toEqual([])
     await setup.dispose()
-    expect([hooks, [...tools], skills, transforms]).toEqual([[], [], [], []])
+    expect([hooks, [...tools], skills, transforms, registered]).toEqual([[], [], [], [], []])
   })
 
   test("starts its features on the minimum version and later", async () => {

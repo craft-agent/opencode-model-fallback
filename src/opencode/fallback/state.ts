@@ -2,6 +2,7 @@ import { join } from "node:path"
 import type { V2Context } from "../types"
 import { createCooldowns, type Cooldowns } from "./cooldowns"
 import { notice, type OnceNotices } from "./notice"
+import type { LimitedEvent } from "./rpc"
 import { readFallbackSettings, type FallbackEnv, type FallbackSettings } from "./settings"
 
 const COOLDOWNS_FILE = "cooldowns.json"
@@ -21,6 +22,8 @@ export type FallbackState = {
   readonly now: () => number
   readonly settings: FallbackSettings
   readonly cooldowns: Cooldowns
+  /** Told each limit as it is cooled down; a feature installs it, and until one does nothing is told. It must not throw. */
+  onLimit?: (event: LimitedEvent) => void
 }
 
 /** The state of a setup. A refused setting is told once in `notices` and the defaults stand; a cooldown file that cannot be saved is told there too. */
