@@ -2,8 +2,11 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { basename, dirname } from "node:path"
 import type { V2ModelRef } from "../types"
 import { parseSelector, selector } from "./routes"
+import { DEFAULT_COOLDOWN_SCOPE, type CooldownScope } from "./settings"
 
 const FILE_VERSION = 1
+/** The model ID a provider's cooldown is saved under, so an older version reads it as a model that is never asked for. */
+const PROVIDER_WILDCARD = "*"
 const UNREADABLE_SUFFIX = ".unreadable"
 const TEMP_SUFFIX = ".tmp"
 /** The errors of reading a file that is not there, or whose directory is not: no file, not an unreadable one. */
@@ -12,11 +15,11 @@ const UNREADABLE_TEXT = "cooldowns file unreadable"
 /** The latest time a `Date` can hold; a cooldown never ends after it, so every end can be written as an ISO time. */
 export const MAX_COOLDOWN_END_MS = 8.64e15
 
-/** The models that hit a limit and when each is usable again, in epoch milliseconds, kept in memory and in a file. */
+/** The models and providers that hit a limit and when each is usable again, in epoch milliseconds, kept in memory and in a file. */
 export type Cooldowns = {
-  /** Passes over `model` until `untilMs`; an end that is not after now, or not a time, is ignored, and an earlier end never shortens a later one. Saves when it changed anything. */
+  /** Passes over `model` until `untilMs`, or over its whole provider under the `provider` scope; an end that is not after now, or not a time, is ignored, and an earlier end never shortens a later one. Saves when it changed anything. */
   cool(model: V2ModelRef, untilMs: number): void
-  /** When `model` is usable again, or `undefined` when it is not cooling down. A cooldown of a model without a variant covers every variant of it. */
+  /** When `model` is usable again, or `undefined` when it is not cooling down. A cooldown of a model without a variant covers every variant of it, and one of its provider covers every model, whatever the scope. */
   until(model: V2ModelRef): number | undefined
 }
 
@@ -24,6 +27,8 @@ export type Cooldowns = {
 export type CooldownsOptions = {
   /** The file the cooldowns are kept in; without one they live in memory only. */
   file?: string
+  /** What a limit cools; the model by default. Cooldowns already held for a provider count under either scope. */
+  scope?: CooldownScope
   /** The clock, in epoch milliseconds. */
   now?: () => number
   /** Told a problem that never reaches a caller, a failed save or an unreadable file: the first of each kind only. */
@@ -36,6 +41,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+/** The key a provider's cooldown is kept and saved under: `provider/*`. */
+function providerKey(providerID: string): string {
+  return selector({ providerID, id: PROVIDER_WILDCARD })
 }
 
 function isLiveEnd(value: unknown, now: number): value is number {
@@ -79,7 +89,8 @@ function loadFile(file: string, now: number, onUnreadable: (text: string) => voi
 }
 
 /**
- * The cooldowns of the models that hit a limit. They are read from `file`
+ * The cooldowns of the models that hit a limit, or of their providers under
+ * the `provider` scope (saved as `provider/*`). They are read from `file`
  * here: an end already past is dropped, and a file that is unreadable or not a
  * cooldowns file is renamed to `<file>.unreadable` (over an older one) and
  * counts as empty. Every change is saved, atomically (a temporary file in the
@@ -90,7 +101,12 @@ function loadFile(file: string, now: number, onUnreadable: (text: string) => voi
  * cooldowns in memory. A failed save and an unreadable file are each told once
  * to `onProblem`; nothing here throws.
  */
-export function createCooldowns({ file, now = Date.now, onProblem }: CooldownsOptions = {}): Cooldowns {
+export function createCooldowns({
+  file,
+  scope = DEFAULT_COOLDOWN_SCOPE,
+  now = Date.now,
+  onProblem,
+}: CooldownsOptions = {}): Cooldowns {
   const told = new Set<string>()
 
   function tell(kind: string, text: string): void {
@@ -131,7 +147,7 @@ export function createCooldowns({ file, now = Date.now, onProblem }: CooldownsOp
   return {
     cool(model, untilMs) {
       if (!Number.isFinite(untilMs) || untilMs <= now()) return
-      const key = selector(model)
+      const key = scope === "provider" ? providerKey(model.providerID) : selector(model)
       const end = Math.min(untilMs, MAX_COOLDOWN_END_MS)
       if (end <= (ends.get(key) ?? 0)) return
       ends.set(key, end)
@@ -139,7 +155,11 @@ export function createCooldowns({ file, now = Date.now, onProblem }: CooldownsOp
     },
     until(model) {
       const current = now()
-      const found = [selector(model), selector({ providerID: model.providerID, id: model.id })]
+      const found = [
+        selector(model),
+        selector({ providerID: model.providerID, id: model.id }),
+        providerKey(model.providerID),
+      ]
         .map((key) => ends.get(key))
         .filter((end): end is number => end !== undefined && end > current)
       return found.length > 0 ? Math.max(...found) : undefined

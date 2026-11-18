@@ -46,6 +46,7 @@ export function createFallbackState(ctx: V2Context, notices: OnceNotices, deps: 
     get cooldowns() {
       cooldowns ??= createCooldowns({
         file: deps.persist === false ? undefined : join(settingsOnce().stateDir, COOLDOWNS_FILE),
+        scope: settingsOnce().cooldownScope,
         now,
         onProblem: (text) => notices.add(notice(text)),
       })
