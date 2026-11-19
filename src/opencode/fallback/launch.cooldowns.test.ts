@@ -41,6 +41,19 @@ describe("launch and cooldowns", () => {
     expect(firstLine(result)).toBe(`[Model fallback: ${AGENT} q/m → b/y; a/x is cooling down until ${until}]`)
   })
 
+  test("passes over a bare step whose model hit a limit on OpenCode's default variant", async () => {
+    const clock = fakeClock()
+    const { launch, fire, subagent } = await startLaunch(undefined, {
+      catalog: CATALOG,
+      agents: { [AGENT]: { model: OTHER } },
+      others: [LIMITS],
+      now: clock.now,
+    })
+    await fire("retry", quotaEvent("a", "x", "default"))
+    await launch(INPUT)
+    expect(subagent.calls[0]!.input.model).toBe("b/y")
+  })
+
   test("takes the step again once its cooldown has ended", async () => {
     const clock = fakeClock()
     const { launch, fire, subagent } = await startLaunch(undefined, {

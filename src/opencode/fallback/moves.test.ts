@@ -103,6 +103,20 @@ describe("the session's variant", () => {
     expect(readMoves(update?.metadata).map((move) => move.to)).toEqual(["b/y#high"])
   })
 
+  test("reads OpenCode's default variant as none: it is placed, recorded and never carried", async () => {
+    const { retry, switches, updates, cooling } = await startMoves({
+      routes: { [AGENT]: ["a/x#high", "b/y"] },
+      catalog: withHigh,
+    })
+    const event = await retry({ model: { ...FIRST, variant: "default" } })
+    expect(event.model).toEqual({ ...FIRST, variant: "default" })
+    expect(event.decision).toEqual(MOVED)
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B }])
+    const [move] = readMoves(updates[0]?.metadata)
+    expect(move).toMatchObject({ from: "a/x", to: "b/y", reason: "a/x hit a quota limit" })
+    expect(cooling(FIRST)).toBeDefined()
+  })
+
   test("is left off a next step whose model lacks it", async () => {
     const { retry, switches } = await startMoves()
     await retry({ model: HIGH })

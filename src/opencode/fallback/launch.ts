@@ -6,7 +6,7 @@ import { continuedSession, watchChild } from "./launch.moves"
 import { selectAskedStep, type SkippedStep } from "./launch.select"
 import { notice, ownedKey } from "./notice"
 import { withNotices } from "./result"
-import { modelsEqual, readRoutes, selector, type RouteTable } from "./routes"
+import { modelsEqual, readRoutes, selector, withoutDefaultVariant, type RouteTable } from "./routes"
 
 const SUBAGENT_ID = "subagent"
 const NO_MODEL = "(no model)"
@@ -53,10 +53,11 @@ async function planLaunch(
     const directory = parent.location?.directory
     if (!directory) return { input }
     const location = { directory }
-    const agentModel = (await ctx.agent!.get!({ agentID: agent, location })).data?.model
+    const ownModel = (await ctx.agent!.get!({ agentID: agent, location })).data?.model
+    const agentModel = ownModel && withoutDefaultVariant(ownModel)
     const catalog = (await ctx.model!.list!({ location })).data
     // The model OpenCode would launch on: the agent's own, else the parent's.
-    const current = agentModel ?? parent.model
+    const current = agentModel ?? (parent.model && withoutDefaultVariant(parent.model))
     const from = current ? selector(current) : null
     const { chosen, skipped } = await selectAskedStep(
       table[agent]!,

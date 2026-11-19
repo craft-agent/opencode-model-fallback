@@ -1,7 +1,13 @@
-import type { V2SessionHooks } from "../types"
+import type { V2ModelRef, V2SessionHooks } from "../types"
+import { withoutDefaultVariant } from "./routes"
 
 /** The event of the `retry` hook: OpenCode's error for a failed model request and its own decision on retrying it. */
 export type RetryEvent = V2SessionHooks["retry"]
+
+/** The model of a retry event with OpenCode's `default` variant read as none; the event itself is left as it is. */
+export function eventModel(event: RetryEvent): V2ModelRef {
+  return withoutDefaultVariant(event.model)
+}
 
 /**
  * A limit a retry event shows: a `quota` or a `rate` limit by the package's own

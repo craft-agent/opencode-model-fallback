@@ -119,6 +119,16 @@ describe("launch selection", () => {
     expect(subagent.calls[0]!.input).toBe(input)
   })
 
+  test("reads the parent's default variant as no variant", async () => {
+    const { launch, subagent } = await startLaunch(undefined, {
+      catalog: CATALOG,
+      sessions: { [PARENT_ID]: { model: { providerID: "a", id: "x", variant: "default" } } },
+    })
+    const input = { ...INPUT }
+    expect(await launch(input)).toBe(SUBAGENT_RESULT)
+    expect(subagent.calls[0]!.input).toBe(input)
+  })
+
   test("compares with the agent's model, not the parent's, when the agent has one", async () => {
     const { launch, subagent } = await startLaunch(undefined, {
       catalog: CATALOG,

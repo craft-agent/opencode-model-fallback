@@ -119,6 +119,9 @@ A model that hit a limit cools down: launches pass over a step with that model
 wait the provider asked for, else the wait of the retry, else `cooldown_ms`. A
 model listed without a variant
 cools down in every variant; one listed with a variant, in that variant only.
+OpenCode names a session's model with the variant `default` when none was
+chosen; the plugin reads that as no variant, here and wherever it reads a
+model, so a limit on a model run without a variant cools it in every variant.
 A model that hits a limit again keeps the later end.
 
 A usage window usually belongs to an account rather than a model, so a limit
@@ -179,10 +182,10 @@ stop), `reason` says why (`a/x hit a quota limit`, `a/x hit a rate limit`; a
 stop adds `; no usable step left`) and `at` is an ISO time. A record that cannot
 be written is dropped, and the move stands.
 
-When a subagent moves or stops, its parent is told. The result of the subagent
-call starts with one line for each move or stop made during that call (after any
-launch line), and the same records are in the result's metadata under
-`opencode-model-fallback.moves`. For a move:
+When a subagent moves or stops while its call waits for it, its parent is told.
+The result of the subagent call starts with one line for each move or stop made
+during that call (after any launch line), and the same records are in the
+result's metadata under `opencode-model-fallback.moves`. For a move:
 
 ```text
 [Model fallback: reviewer provider-a/model-x → provider-b/model-y#high; provider-a/model-x hit a quota limit]
@@ -196,6 +199,13 @@ For a stop:
 
 A call that continues a child tells only the moves made since the call began,
 and is otherwise left as it is. A child that cannot be read tells nothing.
+
+A call that returns before its child is done tells only the moves made by then,
+which is usually none: from OpenCode 2.3.0 every subagent runs in the
+background, and before it one runs there when the call asks for it or outlasts
+its wait. OpenCode reports such a child to its parent when it finishes, with
+the child's own answer, and a plugin cannot add to that report. Its moves and
+stop are still recorded in the child session's metadata, as above.
 
 The moves need `session.switchModel`, `session.update` and `model.list` of
 OpenCode. A host without one keeps moves off, says so once, and still records

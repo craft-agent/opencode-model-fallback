@@ -9,6 +9,8 @@ export type RouteProblems = readonly string[]
 const PROVIDER_SEPARATOR = "/"
 const VARIANT_SEPARATOR = "#"
 const WHITESPACE = /\s/
+/** The variant OpenCode reports for a model with no variant chosen; it is no real variant. */
+export const DEFAULT_VARIANT = "default"
 
 function plain(text: string, ...forbidden: string[]): boolean {
   return text !== "" && !WHITESPACE.test(text) && !forbidden.some((char) => text.includes(char))
@@ -27,7 +29,14 @@ export function parseSelector(text: string): V2ModelRef | undefined {
   if (!plain(providerID, VARIANT_SEPARATOR) || !plain(id)) return undefined
   if (variant === undefined) return { providerID, id }
   if (!plain(variant, PROVIDER_SEPARATOR)) return undefined
-  return { providerID, id, variant }
+  return variant === DEFAULT_VARIANT ? { providerID, id } : { providerID, id, variant }
+}
+
+/** `ref` without its variant when that is `default`, OpenCode's name for no variant; any other variant is kept. */
+export function withoutDefaultVariant(ref: V2ModelRef): V2ModelRef {
+  if (ref.variant !== DEFAULT_VARIANT) return ref
+  const { variant: _variant, ...bare } = ref
+  return bare
 }
 
 /** Writes a model as `provider/model#variant`, without the `#variant` when it has none; `parseSelector` reads it back. */

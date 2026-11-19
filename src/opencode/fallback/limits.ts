@@ -2,7 +2,7 @@ import type { V2Context } from "../types"
 import { askLimit } from "./consumer"
 import { MAX_COOLDOWN_END_MS } from "./cooldowns"
 import type { Feature } from "./feature"
-import { providerWait, readLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
+import { eventModel, providerWait, readLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
 import { selector } from "./routes"
 import type { FallbackState } from "./state"
 
@@ -12,7 +12,7 @@ const read = new WeakMap<object, Promise<Limit | undefined>>()
 /** The limit a consumer's plugin names in an error the package's own rule does not take for one; no answer, and an answer of no limit, are `undefined`. */
 async function consumerLimit(ctx: V2Context, event: RetryEvent): Promise<Limit | undefined> {
   const agent = typeof event.agent === "string" ? event.agent : ""
-  const answer = await askLimit(ctx, agent, event.model, event.error, reportedDelay(event), providerWait(event))
+  const answer = await askLimit(ctx, agent, eventModel(event), event.error, reportedDelay(event), providerWait(event))
   if (answer?.limit !== true) return undefined
   return {
     kind: "consumer",
@@ -27,7 +27,7 @@ async function findLimit(ctx: V2Context, state: FallbackState, event: RetryEvent
   const limit = readLimit(event, settings.maxWaitMs) ?? (await consumerLimit(ctx, event))
   if (!limit) return undefined
   const end = now() + (limit.waitMs ?? settings.cooldownMs)
-  cooldowns.cool(event.model, end)
+  cooldowns.cool(eventModel(event), end)
   announce(state, event, limit, end)
   return limit
 }
@@ -38,7 +38,7 @@ function announce(state: FallbackState, event: RetryEvent, limit: Limit, end: nu
     state.onLimit?.({
       session_id: event.sessionID,
       agent: typeof event.agent === "string" ? event.agent : "",
-      model: selector(event.model),
+      model: selector(eventModel(event)),
       kind: limit.kind,
       until: new Date(Math.min(end, MAX_COOLDOWN_END_MS)).toISOString(),
       ...(limit.waitMs !== undefined && { wait_ms: limit.waitMs }),

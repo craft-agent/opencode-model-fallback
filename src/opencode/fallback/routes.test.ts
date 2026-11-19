@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { modelsEqual, parseSelector, readRoutes, selector } from "./routes"
+import { modelsEqual, parseSelector, readRoutes, selector, withoutDefaultVariant } from "./routes"
 
 describe("parseSelector", () => {
   test.each([
@@ -8,8 +8,13 @@ describe("parseSelector", () => {
     ["openrouter/meta/llama-3:free", { providerID: "openrouter", id: "meta/llama-3:free" }],
     ["openrouter/meta/llama-3:free#x", { providerID: "openrouter", id: "meta/llama-3:free", variant: "x" }],
     [" a/b ", { providerID: "a", id: "b" }],
+    ["a/b#default", { providerID: "a", id: "b" }],
   ])("reads %p", (text, expected) => {
     expect(parseSelector(text)).toEqual(expected)
+  })
+
+  test("omits the variant key for the default variant", () => {
+    expect(Object.keys(parseSelector("a/b#default")!)).not.toContain("variant")
   })
 
   test.each([[""], ["a"], ["/b"], ["a/"], ["a/b#"], ["a b/c"], ["a/b#x/y"], ["a/#x"], ["a#b/c"], ["a/b c"]])(
@@ -27,6 +32,18 @@ describe("parseSelector", () => {
 describe("selector", () => {
   test.each([["a/b"], ["a/b#high"], ["openrouter/meta/llama-3:free#max"]])("round-trips %p", (text) => {
     expect(selector(parseSelector(text)!)).toBe(text)
+  })
+})
+
+describe("withoutDefaultVariant", () => {
+  test("drops the default variant, key and all", () => {
+    const ref = withoutDefaultVariant({ providerID: "a", id: "b", variant: "default" })
+    expect(ref).toEqual({ providerID: "a", id: "b" })
+    expect(Object.keys(ref)).not.toContain("variant")
+  })
+
+  test.each([[{ providerID: "a", id: "b" }], [{ providerID: "a", id: "b", variant: "high" }]])("keeps %p", (ref) => {
+    expect(withoutDefaultVariant(ref)).toEqual(ref)
   })
 })
 
