@@ -105,6 +105,42 @@ describe("limits cooldowns", () => {
     )
   })
 
+  test("a rate limit is read from the provider's wait, not from a decision another plugin stretched", async () => {
+    const stretched = { retry: true as const, delay: 5 * HOUR_MS }
+    const error = { type: "provider.rate-limit", message: "slow down", retryAfterMs: 5_000 }
+    expect((await coolingAfter(retryEvent({ error, decision: stretched }))).until()).toBeUndefined()
+    const long = { ...error, retryAfterMs: HOUR_MS }
+    expect((await coolingAfter(retryEvent({ error: long, decision: { retry: false } }))).until()).toBe(
+      START_MS + HOUR_MS,
+    )
+  })
+
+  test("a rate limit that names no wait cools by the decision from its fifth attempt on", async () => {
+    const error = { type: "provider.rate-limit", message: "slow down" }
+    const decision = { retry: true as const, delay: 5 * HOUR_MS }
+    expect((await coolingAfter({ ...retryEvent({ error, decision }), attempt: 4 })).until()).toBeUndefined()
+    expect((await coolingAfter({ ...retryEvent({ error, decision }), attempt: 5 })).until()).toBe(
+      START_MS + 5 * HOUR_MS,
+    )
+  })
+
+  test("a quota error cools the model for the provider's wait before the decision's", async () => {
+    const error = { type: "provider.quota", message: "out of quota", retryAfterMs: 30_000 }
+    expect((await coolingAfter(retryEvent({ error, decision: { retry: true, delay: 90_000 } }))).until()).toBe(
+      START_MS + 30_000,
+    )
+  })
+
+  test("asks a consumer about an error that is not a limit with the provider's wait", async () => {
+    const { fire, rpcCalls } = await start(
+      { routes: { worker: ["a/x"] } },
+      { rpc: { limit: () => ({ limit: false }) } },
+    )
+    const error = { type: "provider.rate-limit", message: "slow down", retryAfterMs: 5_000 }
+    await fire("retry", retryEvent({ error, decision: { retry: true, delay: 5 * HOUR_MS } }))
+    expect(rpcCalls[0]!.input).toMatchObject({ wait_ms: 5 * HOUR_MS, retry_after_ms: 5_000 })
+  })
+
   test("an error that is not a limit cools nothing", async () => {
     const error = { type: "provider.auth", status: 401, message: "bad key" }
     expect((await coolingAfter(retryEvent({ error, decision: { retry: true, delay: 60_000 } }))).until()).toBe(

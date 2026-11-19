@@ -10,7 +10,12 @@ describe("readFallbackSettings", () => {
     expect(DEFAULT_MAX_WAIT_MS).toBe(10_000)
     expect(DEFAULT_COOLDOWN_MS).toBe(3_600_000)
     expect(readFallbackSettings(undefined, { HOME })).toEqual({
-      settings: { maxWaitMs: 10_000, cooldownMs: 3_600_000, stateDir: `${HOME}/.local/state/${PROJECT.name}` },
+      settings: {
+        maxWaitMs: 10_000,
+        cooldownMs: 3_600_000,
+        cooldownScope: "model",
+        stateDir: `${HOME}/.local/state/${PROJECT.name}`,
+      },
     })
   })
 
@@ -31,7 +36,7 @@ describe("readFallbackSettings", () => {
       [`${prefix}_STATE_DIR`]: "~/cooldown-state",
     }
     expect(readFallbackSettings(undefined, env)).toEqual({
-      settings: { maxWaitMs: 0, cooldownMs: 60_000, stateDir: `${HOME}/cooldown-state` },
+      settings: { maxWaitMs: 0, cooldownMs: 60_000, cooldownScope: "model", stateDir: `${HOME}/cooldown-state` },
     })
   })
 
@@ -44,7 +49,7 @@ describe("readFallbackSettings", () => {
     }
     expect(
       readFallbackSettings({ max_wait_ms: 500, cooldown_ms: 900, state_dir: "/option", routes: {} }, env).settings,
-    ).toEqual({ maxWaitMs: 500, cooldownMs: 900, stateDir: "/option" })
+    ).toEqual({ maxWaitMs: 500, cooldownMs: 900, cooldownScope: "model", stateDir: "/option" })
   })
 
   test.each([
@@ -57,6 +62,7 @@ describe("readFallbackSettings", () => {
     expect(settings).toEqual({
       maxWaitMs: 10_000,
       cooldownMs: 3_600_000,
+      cooldownScope: "model",
       stateDir: `${HOME}/.local/state/${PROJECT.name}`,
     })
     expect(problem).toContain(name)

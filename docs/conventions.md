@@ -573,6 +573,43 @@ not used.
 - **No default names a role, model, provider account or machine**, since a
   default is the one value every user gets.
 
+### Limits
+
+- **A limit is read from the provider, not from the decision a retry carries
+  by the time it arrives.** Every `retry` hook edits one decision in turn, and
+  a plugin listed before this one may stretch a short rate limit's wait to
+  the reset of an unrelated spent window; read that way, a burst would move a
+  session and cool its model for hours. The error's `retryAfterMs` is the
+  wait the provider asked for, and no hook changes it. One package registers
+  one plugin, so recording the decision before another plugin's hook would
+  take a second package.
+- **A quota error is a limit; a rate limit is one when its provider asked for
+  a wait longer than `max_wait_ms`.** OpenCode's own wait is its backoff
+  (at most 10 s a gap) raised to that wait, so the test is the one OpenCode's
+  own decision would give.
+- **A rate limit that names no wait counts from its fourth retry on.** The
+  first three are OpenCode's to sit out; after them the decision as it stands
+  decides, so a spent window whose provider names no wait still moves a
+  session instead of retrying for good.
+- **A cooldown lasts the provider's wait, else the decision's, else
+  `cooldown_ms`.** For a real limit, a wait another plugin set for the
+  window's reset is the best end known. A consumer's limit keeps its own
+  wait.
+- **A short limit is not left to wait out a window.** A session the fallback
+  would move (a routed agent on a step of its route) whose rate limit is not a
+  limit, but whose decision another plugin stretched past `max_wait_ms`,
+  retries after `max_wait_ms`. Other sessions keep the decision as it is.
+- **A cooldown covers a model, or with `cooldown_scope: "provider"` its whole
+  provider.** A usage window usually belongs to an account, so a limit on one
+  model refuses the provider's other models too; scoped to the model, each of
+  them costs a refused request before it is passed over. The default stays
+  `model`, the side that changes the least. A provider holding several
+  accounts needs a finer split than either, which only the consumer knows.
+- **A provider's cooldown is saved as `<provider>/*`.** It is read as a model
+  whose ID is `*`, so a version without the setting loads the file and passes
+  nothing over for it, and one with the setting loads files written before
+  it.
+
 ### State
 
 - **State lives in the package's own directory**: `$XDG_STATE_HOME/opencode-model-fallback/`,
@@ -610,6 +647,20 @@ not used.
   until one is usable; `limit` only of an error the package's own rule does not
   take for a limit, once per retry event. A consumer can pass a step over or
   name a limit; it cannot make a step usable that the package's checks refused.
+- **A consumer hears each limit as an event**, `limited` of the RPC
+  `opencode-model-fallback.limits` (`LIMITS_RPC`, exported beside
+  `STEPS_RPC`), so it can pass over the steps that share the spent window
+  through `usable`: which ones do is the consumer's knowledge, not a rule the
+  package could hold. One event per retry event taken for a limit, after the
+  model is cooled: `{ session_id, agent, model, kind, until, wait_ms?,
+reason? }`, `until` the cooldown's end as an ISO time.
+- **The event has a definition of its own.** Only the plugin that registers
+  a definition can emit its events, and registering `STEPS_RPC` would take the
+  consumer's handlers' place. `LIMITS_RPC` has no methods.
+- **An event is a courtesy, never a step of a decision.** It is live only (a
+  listener misses what was emitted before it subscribed), an emit that fails
+  is dropped, and a host that cannot register the definition keeps the event
+  off with one notice; launches, moves and cooldowns go on as without it.
 
 ### OpenCode versions
 

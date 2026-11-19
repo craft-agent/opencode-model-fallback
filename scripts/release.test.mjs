@@ -60,7 +60,9 @@ describe("package files", () => {
     const workflow = readFileSync(join(ROOT, ".github/workflows/release-publish.yml"), "utf8")
     const built = workflow.match(/built=\(([^)]*)\)/)?.[1].split(/\s+/)
     expect(Object.keys(pkg.exports)).toContain("./rpc")
-    for (const target of Object.values(pkg.exports)) {
+    for (const target of Object.values(pkg.exports).flatMap((entry) =>
+      typeof entry === "string" ? [entry] : Object.values(entry),
+    )) {
       expect(isPacked(target.replace(/^\.\//, ""), pkg.files)).toBe(true)
       expect(built).toContain(target.replace(/^\.\//, ""))
     }

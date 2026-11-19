@@ -100,17 +100,34 @@ Once `routes` is configured, the plugin watches OpenCode's retries. A model
 hits a limit when a request to it fails with:
 
 - a quota error (`provider.quota`), or
-- a rate limit (`provider.rate-limit`, or status 429) that OpenCode will retry
-  only after a wait longer than `max_wait_ms`.
+- a rate limit (`provider.rate-limit`, or status 429) whose provider asked for a
+  wait longer than `max_wait_ms`.
+
+The wait is the one the provider asked for (the error's `retryAfterMs`), not
+the wait the retry carries by the time this plugin sees it: another plugin may
+have stretched that one (see [Beside other plugins](#beside-other-plugins)). A
+rate limit whose provider names no wait is left to OpenCode for its first three
+retries; from the fourth on it is a limit when OpenCode, or a plugin before this
+one, will retry it only after more than `max_wait_ms`, so a spent window whose
+provider names no wait still moves a session.
 
 Any other error, authentication failures included, is not a limit, and a rate
-limit OpenCode retries within `max_wait_ms` is left to OpenCode.
+limit within `max_wait_ms` is left to OpenCode.
 
 A model that hit a limit cools down: launches pass over a step with that model
 (`a/x is cooling down until 2026-11-17T09:30:00.000Z` in the notice) until the
-wait OpenCode reported, else `cooldown_ms`. A model listed without a variant
+wait the provider asked for, else the wait of the retry, else `cooldown_ms`. A
+model listed without a variant
 cools down in every variant; one listed with a variant, in that variant only.
-A model that hits a limit again keeps the later end. A cooldown never changes
+A model that hits a limit again keeps the later end.
+
+A usage window usually belongs to an account rather than a model, so a limit
+on one model of a provider refuses its other models too. With
+`cooldown_scope: "provider"`, a limit cools down the whole provider: launches
+and moves pass over every step of it until the end, instead of meeting one
+refusal per model. The default, `model`, cools only the model. A provider that
+holds several accounts needs a finer split, which your own plugin can make (see
+[Plugging in your own judgment](#plugging-in-your-own-judgment)). A cooldown never changes
 OpenCode's own decision to retry; a [move](#moves) may.
 
 Cooldowns are saved in `cooldowns.json` in the state directory, so they survive
@@ -120,8 +137,10 @@ standalone run) merge on every save: per model the later end wins. A process
 sees another's cooldown once it next saves. A file that cannot be read, when
 loading or saving, is renamed to `cooldowns.json.unreadable`, counts as empty
 and is told once in a notice; a file that cannot be written is told once too,
-and the cooldowns stay in memory. The settings are in the [table](#settings):
-`max_wait_ms`, `cooldown_ms` and `state_dir`.
+and the cooldowns stay in memory. A provider's cooldown is saved as
+`<provider>/*`, which a version without `cooldown_scope` loads and ignores. The
+settings are in the [table](#settings): `max_wait_ms`, `cooldown_ms`,
+`cooldown_scope` and `state_dir`.
 
 ## Moves
 
@@ -190,12 +209,15 @@ fallback asks with):
   each candidate. `{ usable: false }` passes the step over, for that launch or
   move only, as `a/x is unusable: <reason>` in the notice (`a/x is unusable`
   without a reason).
-- `limit({ agent, model, error, wait_ms? })` → `{ limit, wait_ms?, reason? }`:
+- `limit({ agent, model, error, wait_ms?, retry_after_ms? })` →
+  `{ limit, wait_ms?, reason? }`:
   is this error a limit? It is asked of a failed request the fallback's own
   rule does not take for a limit (see [Cooldowns](#cooldowns)); a quota or rate
   limit it found itself is never put to you. `error` is
   `{ type, status?, message, body? }` as OpenCode reported it, and `wait_ms` is
-  the wait OpenCode's own decision gave, when it will retry after one; `agent`
+  the wait the retry carries, when it will retry after one (another plugin may
+  have stretched it); `retry_after_ms` is the wait the provider asked for, when
+  it named one; `agent`
   is empty when OpenCode names none for the retry. `{ limit: true }` cools the
   model down for `wait_ms` (the `cooldown_ms` setting when you give none, or
   zero) and moves a routed session on, with `a/x hit a limit: <reason>` as the
@@ -247,9 +269,15 @@ export default {
 
 Load it beside the fallback in `opencode.json`; for the RPC the order does not
 matter, since the fallback looks for an answering plugin at each question. The
-last plugin to register for the RPC wins. The package ships no type
-declarations for the subpath yet. (A plugin that rewrites retry waits is a
+last plugin to register for the RPC wins. The subpath ships its type
+declarations (`StepsHandlers`, `LimitedEvent` and the rest), so a TypeScript
+plugin gets them without a schema library. (A plugin that rewrites retry waits is a
 different matter: see [Beside other plugins](#beside-other-plugins).)
+
+[`examples/`](examples/) holds plugins to copy and adapt, each with its tests:
+one answers `usable` from a usage file, one takes a provider's own wording for
+a limit, and one passes over the steps that share a spent window. Its README
+says how to load such a plugin, with the package installed beside it.
 
 ### Remaining usage
 
@@ -258,6 +286,65 @@ is left (a usage plugin, a file, a provider's API) answers `usable` with
 `{ usable: false, reason }` for a step that is spent. To use paid credit only
 after included usage, list the paid step after the included ones in the route:
 a route's order is the whole policy.
+
+### Hearing each limit
+
+When the fallback takes an error for a limit, it tells every plugin that
+listens, through the event `limited` of a second definition, `LIMITS_RPC`, also
+exported from `@craftsamo/opencode-model-fallback/rpc`:
+
+```text
+{ session_id, agent, model, kind, until, wait_ms?, reason? }
+```
+
+`model` is the step that hit the limit (`provider/model#variant`), `kind` is
+`quota`, `rate` or `consumer` (a limit your `limit` handler named, with its
+`reason`), `until` is the end of its cooldown as an ISO time and `wait_ms` the
+wait the limit carried, when it had one; `agent` is empty when OpenCode names
+none. It comes once for each limit, after the model is cooled down. A
+listener gets OpenCode's event envelope, with these fields under `data` (and
+`type`, `rpc.opencode-model-fallback.limits.limited`, beside it).
+
+Use it when a window is shared in a way only your setup knows, such as two
+logins of one provider whose models are routed to different accounts: note the
+end for the steps that share the spent window, and answer `usable` with
+`{ usable: false }` for them until then.
+
+```js
+import { LIMITS_RPC, STEPS_RPC } from "@craftsamo/opencode-model-fallback/rpc"
+
+/** The account each model runs on, as this setup knows it. */
+const accountOf = (model) => (model.includes("-work") ? "work" : "home")
+
+export default {
+  id: "shared-windows",
+  async setup(ctx) {
+    const spentUntil = new Map()
+    const unsubscribe = ctx.rpc(LIMITS_RPC).events.on("limited", ({ data }) => {
+      spentUntil.set(accountOf(data.model), Date.parse(data.until))
+    })
+    const registration = await ctx.rpc.register(STEPS_RPC, {
+      async usable({ model }) {
+        const until = spentUntil.get(accountOf(model)) ?? 0
+        return until > Date.now() ? { usable: false, reason: "its account's window is spent" } : { usable: true }
+      },
+      async limit() {
+        return { limit: false }
+      },
+    })
+    return async () => {
+      unsubscribe()
+      await registration.dispose()
+    }
+  },
+}
+```
+
+The event is live only: a plugin hears the limits found after it subscribed,
+so subscribe in `setup`. A handler that throws ends its subscription, so catch
+inside it. An event that cannot be sent is dropped, and nothing the fallback
+does waits on it. A host that cannot register the definition keeps the event
+off and says so once, in the notice of the first launch.
 
 ## Beside other plugins
 
@@ -275,11 +362,18 @@ registered, which is the order the plugins are listed, and each may replace
 ```
 
 A plugin such as opencode-quota, whose `waitForQuotaReset` (on by default)
-replaces a limit's decision with a wait for the window's reset, up to five
-hours, must run first. Listed after this plugin, it would turn a move's
-immediate retry, or a child's stop, into that wait. Listed before it, this
-plugin has the last word, and the wait the other plugin set for a spent window
-is read as a limit and makes a good cooldown.
+replaces a rate limit's decision with a wait for the reset of a spent window of
+the provider, up to five hours, must run first. Listed after this plugin, it
+would turn a move's immediate retry, or a child's stop, into that wait. Listed
+before it, this plugin has the last word.
+
+Such a wait is not read as a limit: the window it waits for may be another
+model's (a weekly window of one model, say) while the request only hit a short
+burst. This plugin reads the wait the provider asked for instead, which no
+plugin changes. For a real limit, the stretched wait is the cooldown when the
+provider named none. A session this plugin would move (a routed agent on a step
+of its route) whose short rate limit got a stretched wait retries after
+`max_wait_ms` instead; other sessions keep the stretched wait.
 
 ## Tools and skills
 
@@ -401,18 +495,19 @@ The OpenCode service keeps the environment it started with; see
 
 An option wins over its environment variable.
 
-| Setting         | Variable                                | Meaning                                                                                                                                                    |
-| --------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `toolsets`      | `OPENCODE_MODEL_FALLBACK_TOOLSETS`      | the toolsets that are on, or `all`; default those `src/project.ts` names                                                                                   |
-| `read_only`     | `OPENCODE_MODEL_FALLBACK_READ_ONLY`     | registers no tool that writes; wins over every other setting                                                                                               |
-| `unattended`    | `OPENCODE_MODEL_FALLBACK_UNATTENDED`    | no person can answer: a write runs only under a grant that covers it; off by default                                                                       |
-| `grants_dir`    | `OPENCODE_MODEL_FALLBACK_GRANTS_DIR`    | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-model-fallback/grants`, else `~/.local/state/opencode-model-fallback/grants`        |
-| `tools`         | `OPENCODE_MODEL_FALLBACK_TOOLS`         | single tools to add by ID, whatever their toolset                                                                                                          |
-| `exclude_tools` | `OPENCODE_MODEL_FALLBACK_EXCLUDE_TOOLS` | single tools to remove by ID; wins over `tools` and `toolsets`                                                                                             |
-| `language`      | `OPENCODE_MODEL_FALLBACK_LANGUAGE`      | the approval prompt's language, such as `ja`                                                                                                               |
-| `max_wait_ms`   | `OPENCODE_MODEL_FALLBACK_MAX_WAIT_MS`   | the longest wait, in milliseconds, OpenCode may ask of a rate limit before it counts as a limit; at least 0, default 10000                                 |
-| `cooldown_ms`   | `OPENCODE_MODEL_FALLBACK_COOLDOWN_MS`   | how long, in milliseconds, a model that hit a limit is passed over when OpenCode gave no wait; at least 1, default 3600000                                 |
-| `state_dir`     | `OPENCODE_MODEL_FALLBACK_STATE_DIR`     | where the plugin keeps its state, the cooldowns included; default `$XDG_STATE_HOME/opencode-model-fallback`, else `~/.local/state/opencode-model-fallback` |
+| Setting          | Variable                                 | Meaning                                                                                                                                                    |
+| ---------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `toolsets`       | `OPENCODE_MODEL_FALLBACK_TOOLSETS`       | the toolsets that are on, or `all`; default those `src/project.ts` names                                                                                   |
+| `read_only`      | `OPENCODE_MODEL_FALLBACK_READ_ONLY`      | registers no tool that writes; wins over every other setting                                                                                               |
+| `unattended`     | `OPENCODE_MODEL_FALLBACK_UNATTENDED`     | no person can answer: a write runs only under a grant that covers it; off by default                                                                       |
+| `grants_dir`     | `OPENCODE_MODEL_FALLBACK_GRANTS_DIR`     | where grants and their use are kept; default `$XDG_STATE_HOME/opencode-model-fallback/grants`, else `~/.local/state/opencode-model-fallback/grants`        |
+| `tools`          | `OPENCODE_MODEL_FALLBACK_TOOLS`          | single tools to add by ID, whatever their toolset                                                                                                          |
+| `exclude_tools`  | `OPENCODE_MODEL_FALLBACK_EXCLUDE_TOOLS`  | single tools to remove by ID; wins over `tools` and `toolsets`                                                                                             |
+| `language`       | `OPENCODE_MODEL_FALLBACK_LANGUAGE`       | the approval prompt's language, such as `ja`                                                                                                               |
+| `max_wait_ms`    | `OPENCODE_MODEL_FALLBACK_MAX_WAIT_MS`    | the longest wait, in milliseconds, a provider may ask of a rate limit before it counts as a limit; at least 0, default 10000                               |
+| `cooldown_ms`    | `OPENCODE_MODEL_FALLBACK_COOLDOWN_MS`    | how long, in milliseconds, a model that hit a limit is passed over when neither the provider nor the retry gave a wait; at least 1, default 3600000        |
+| `cooldown_scope` | `OPENCODE_MODEL_FALLBACK_COOLDOWN_SCOPE` | what a limit cools down: `model`, the default, or `provider`, every model of the provider                                                                  |
+| `state_dir`      | `OPENCODE_MODEL_FALLBACK_STATE_DIR`      | where the plugin keeps its state, the cooldowns included; default `$XDG_STATE_HOME/opencode-model-fallback`, else `~/.local/state/opencode-model-fallback` |
 
 `OPENCODE_MODEL_FALLBACK_GRANT_KEY` is a variable only, never a plugin option.
 Use at least 32 characters, for example from `openssl rand -hex 32`, stored

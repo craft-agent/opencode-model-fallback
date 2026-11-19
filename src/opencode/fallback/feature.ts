@@ -4,7 +4,14 @@ import { createFallbackState, type FallbackDeps, type FallbackState } from "./st
 
 /** A call of the context a feature may need; the runner checks that each is a function before the feature starts. */
 export type CallPath =
-  "session.hook" | "session.switchModel" | "session.update" | "tool.transform" | "agent.get" | "model.list" | "rpc"
+  | "session.hook"
+  | "session.switchModel"
+  | "session.update"
+  | "tool.transform"
+  | "agent.get"
+  | "model.list"
+  | "rpc"
+  | "rpc.register"
 
 /** What a feature registers through: the one way to take a hook, so a failure is caught and every registration collected. */
 export type FeatureApi = {

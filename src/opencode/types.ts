@@ -112,6 +112,8 @@ export type V2SessionHooks = {
       status?: number
       message: string
       response?: { body?: string }
+      /** The wait the provider asked for, in milliseconds, as OpenCode recorded it; no hook changes it. */
+      retryAfterMs?: number
     }
     decision: { retry: false } | { retry: true; delay: number }
   }
@@ -154,16 +156,26 @@ export type V2CatalogModel = {
   limit: { context: number; input?: number; output: number }
 }
 
+/** Mirrors an RPC definition: its ID, its methods and its events. */
+export type V2RpcDefinition = {
+  id: string
+  methods: Record<string, object>
+  events: Record<string, object>
+}
+
 /** Mirrors the context a V2 plugin's `setup` receives (`@opencode/plugin`, promise API); what only a feature uses is optional, so it can be probed. */
 export type V2Context = {
   app?: { version?: string }
   options?: PluginOptions
-  /** Another plugin's RPC methods, by its definition. */
-  rpc?: (definition: {
-    id: string
-    methods: Record<string, object>
-    events: Record<string, object>
-  }) => Record<string, ((input: unknown, options?: { signal?: AbortSignal }) => Promise<unknown>) | undefined>
+  /** Another plugin's RPC methods, by its definition; `register` takes a definition for this plugin to answer and emit. */
+  rpc?: ((
+    definition: V2RpcDefinition,
+  ) => Record<string, ((input: unknown, options?: { signal?: AbortSignal }) => Promise<unknown>) | undefined>) & {
+    register?(
+      definition: V2RpcDefinition,
+      handlers: Record<string, unknown>,
+    ): Promise<Registration & { events: { emit(name: string, data: unknown): Promise<void> } }>
+  }
   agent?: {
     get?(input: { agentID: string; location: { directory: string } }): Promise<{ data: { model?: V2ModelRef } }>
   }

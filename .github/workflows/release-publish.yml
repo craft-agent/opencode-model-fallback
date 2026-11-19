@@ -105,7 +105,7 @@ jobs:
       # while the job can request an OIDC token.
       - name: Check the tarball
         run: |
-          built=(dist/opencode.js dist/rpc.js)
+          built=(dist/opencode.js dist/rpc.js dist/rpc.d.ts)
           for file in "${built[@]}"; do
             if [[ ! -f "$file" ]]; then
               echo "::error::$file is missing from the tagged commit."
