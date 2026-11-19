@@ -68,7 +68,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        opencode: ["2.1.2", "2.3.0"]
+        opencode: ["2.1.2", "2.3.0", "2.3.2"]
     steps:
       - uses: actions/checkout@v7
         with:

@@ -671,8 +671,8 @@ reason? }`, `until` the cooldown's end as an ISO time.
 - **A feature whose call is missing stays off**, and says so once in a
   notice; the others run. The plugin checks at setup, by type, that each call
   a feature needs is there.
-- **Hooks cannot be detected that way.** OpenCode 2.1.2 and 2.3.0 resolve
-  `session.hook` for any name: an unknown name returns a registration too. So
+- **Hooks cannot be detected that way.** OpenCode 2.1.2, 2.3.0 and 2.3.2
+  resolve `session.hook` for any name: an unknown name returns a registration too. So
   the hooks a feature uses must exist from the minimum version on. That is
   checked against OpenCode's source for each tested version and by the CI
   load check, which confirms the calls, the `subagent` tool and that setup
