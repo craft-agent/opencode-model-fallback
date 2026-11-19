@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import { AGENT, NO_ROUTES } from "./launch.testing"
 import { MOVES } from "./moves"
-import { CATALOG, CHILD, SESSION_ID, retryEvent, startMoves } from "./moves.testing"
+import { readMoves } from "./moves.record"
+import { CATALOG, CHILD, FIRST, SESSION_ID, retryEvent, startMoves } from "./moves.testing"
 import { catalogModel } from "./testing"
 
 const B = { providerID: "b", id: "y" }
@@ -88,6 +89,58 @@ describe("moves to the next step", () => {
   })
 })
 
+describe("the session's variant", () => {
+  const HIGH = { ...FIRST, variant: "high" }
+  const B_HIGH = { ...B, variant: "high" }
+  const B_LOW = { ...B, variant: "low" }
+  const withHigh = [catalogModel("a/x"), catalogModel("b/y", { variants: [{ id: "high" }, { id: "low" }] })]
+
+  test("carries onto a next step with no variant whose model has it, and records it", async () => {
+    const { retry, switches, updates } = await startMoves({ catalog: [...withHigh, CATALOG[2]!] })
+    expect((await retry({ model: HIGH })).decision).toEqual(MOVED)
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B_HIGH }])
+    const [update] = updates
+    expect(readMoves(update?.metadata).map((move) => move.to)).toEqual(["b/y#high"])
+  })
+
+  test("is left off a next step whose model lacks it", async () => {
+    const { retry, switches } = await startMoves()
+    await retry({ model: HIGH })
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B }])
+  })
+
+  test("never replaces the variant of a next step", async () => {
+    const routes = { [AGENT]: ["a/x", "b/y#low"] }
+    const { retry, switches } = await startMoves({ routes, catalog: withHigh })
+    await retry({ model: HIGH })
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B_LOW }])
+  })
+
+  test("is the variant a cooldown is checked for", async () => {
+    const { retry, switches } = await startMoves({ catalog: [...withHigh, CATALOG[2]!] })
+    await retry({ agent: "free", model: B_HIGH })
+    await retry({ model: HIGH })
+    await retry({ model: { ...FIRST, variant: "low" } })
+    expect(switches).toEqual([
+      { sessionID: SESSION_ID, model: C },
+      { sessionID: SESSION_ID, model: B_LOW },
+    ])
+  })
+
+  test("is the variant the consumer is asked about", async () => {
+    const asked: unknown[] = []
+    const rpc = {
+      usable: (input: unknown) => {
+        asked.push(input)
+        return { usable: true }
+      },
+    }
+    const { retry } = await startMoves({ catalog: withHigh, rpc })
+    await retry({ model: HIGH })
+    expect(asked).toEqual([{ agent: AGENT, model: "b/y#high" }])
+  })
+})
+
 describe("who moves", () => {
   test("finds the place by variant, and the next step after it", async () => {
     const routes = { [AGENT]: ["a/x#low", "a/x#high", "b/y"] }
@@ -112,8 +165,23 @@ describe("who moves", () => {
     expect(switches).toEqual([{ sessionID: SESSION_ID, model: B }])
   })
 
+  test("places a model with a variant on the step of its model with no variant", async () => {
+    const { retry, switches } = await startMoves()
+    expect((await retry({ model: { ...FIRST, variant: "max" } })).decision).toEqual(MOVED)
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B }])
+  })
+
+  test("prefers an exact step to a step of its model with no variant", async () => {
+    const routes = { [AGENT]: ["a/x", "a/x#high", "b/y"] }
+    const catalog = [catalogModel("a/x", { variants: [{ id: "high" }] }), catalogModel("b/y")]
+    const { retry, switches } = await startMoves({ routes, catalog })
+    await retry({ model: { ...FIRST, variant: "high" } })
+    expect(switches).toEqual([{ sessionID: SESSION_ID, model: B }])
+  })
+
   test("leaves a model off the route to OpenCode", async () => {
-    const { retry, switches, updates } = await startMoves()
+    const routes = { [AGENT]: ["a/x#low", "b/y"] }
+    const { retry, switches, updates } = await startMoves({ routes })
     const offRoute = [
       { providerID: "q", id: "m" },
       { providerID: "a", id: "x", variant: "max" },

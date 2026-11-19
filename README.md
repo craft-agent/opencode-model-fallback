@@ -147,13 +147,20 @@ settings are in the [table](#settings): `max_wait_ms`, `cooldown_ms`,
 A session moves when its model hits a limit (see [Cooldowns](#cooldowns)) and
 both of these hold: its agent has a route, and its model is a step of it. The
 agent is the one OpenCode names for the retry, else the session's own. The model
-is the step it equals, provider, ID and variant; a model with no variant that
-equals no step is taken for the first step with its provider and ID. A model
-off the route, or an agent with no route, is left to OpenCode, which decides as
-it would have. This holds for primary agents and subagents alike.
+is the step it equals, provider, ID and variant. A step without a variant stands
+for its model in every variant, so a model with a variant that equals no step is
+taken for the first step of its provider and ID that has no variant; a model
+with no variant that equals no step is taken for the first step with its
+provider and ID. A model off the route, or an agent with no route, is left to
+OpenCode, which decides as it would have. This holds for primary agents and
+subagents alike.
 
-The session moves to the first usable step after its own. A step is usable as it
-is for a launch: OpenCode lists its model for the session's directory as
+The session moves to the first usable step after its own. A step without a
+variant takes the session's variant along when OpenCode lists its model with
+that variant, and is taken without one otherwise; a step with a variant keeps
+its own. So a route such as `["provider-a/model-x", "provider-b/model-x"]` moves
+a session on `provider-a/model-x#high` to `provider-b/model-x#high`, and one on
+`#low` to `#low`. A step is usable as it is for a launch: OpenCode lists its model for the session's directory as
 enabled, active and able to call tools (and, for a step with a variant, with
 that variant), and the model is not cooling down. The model that hit the limit
 is cooled down first, so it stays passed over. The plugin then switches the
@@ -202,7 +209,8 @@ exports from `@craftsamo/opencode-model-fallback/rpc` (the same schemas the
 fallback asks with):
 
 - `usable({ agent, model })` → `{ usable, reason? }`: may this agent run on this
-  step now? `model` is the step, `provider/model#variant`. The fallback asks it
+  step now? `model` is the step, `provider/model#variant`, with the variant a
+  move carries onto a step written without one. The fallback asks it
   of a step only after its own checks passed it (OpenCode lists the model, it is
   not cooling down), in the order of the route, for a launch and for a move,
   and stops at the first step you do not refuse, so it asks at most once for
