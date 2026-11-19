@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { createCooldowns, MAX_COOLDOWN_END_MS } from "./cooldowns"
 import { fakeClock, START_MS, tempDirs } from "./cooldowns.testing"
@@ -104,6 +104,34 @@ describe("cooldowns in a file", () => {
     clock.advance(4_000)
     expect(open().until(HIGH)).toBeUndefined()
     expect(open().until({ providerID: "b", id: "y" })).toBe(START_MS + 9_000)
+  })
+
+  test("a saved model with the default variant cools the model and every variant of it", () => {
+    const { clock, file, open } = setup()
+    mkdirSync(join(file, ".."), { recursive: true })
+    writeFileSync(file, JSON.stringify({ version: 1, cooldowns: { "a/x#default": clock.now() + 1_000 } }))
+    const cooldowns = open()
+    expect(cooldowns.until(MODEL)).toBe(START_MS + 1_000)
+    expect(cooldowns.until(HIGH)).toBe(START_MS + 1_000)
+  })
+
+  test("a model and its default variant in one file collapse to the later end", () => {
+    const { clock, file, open } = setup()
+    mkdirSync(join(file, ".."), { recursive: true })
+    const cooldowns = { "a/x": clock.now() + 1_000, "a/x#default": clock.now() + 2_000 }
+    writeFileSync(file, JSON.stringify({ version: 1, cooldowns }))
+    expect(open().until(MODEL)).toBe(START_MS + 2_000)
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 1, cooldowns: { "a/x#default": clock.now() + 1_000, "a/x": clock.now() + 2_000 } }),
+    )
+    expect(open().until(MODEL)).toBe(START_MS + 2_000)
+  })
+
+  test("saves a model with the default variant as the model", () => {
+    const { cooldowns, file } = setup()
+    cooldowns.cool({ ...MODEL, variant: "default" }, START_MS + 1_000)
+    expect(JSON.parse(readFileSync(file, "utf8")).cooldowns).toEqual({ "a/x": START_MS + 1_000 })
   })
 
   test("a cooldown that changes nothing saves nothing", () => {

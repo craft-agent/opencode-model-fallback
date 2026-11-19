@@ -119,6 +119,9 @@ A model that hit a limit cools down: launches pass over a step with that model
 wait the provider asked for, else the wait of the retry, else `cooldown_ms`. A
 model listed without a variant
 cools down in every variant; one listed with a variant, in that variant only.
+OpenCode names a session's model with the variant `default` when none was
+chosen; the plugin reads that as no variant, here and wherever it reads a
+model, so a limit on a model run without a variant cools it in every variant.
 A model that hits a limit again keeps the later end.
 
 A usage window usually belongs to an account rather than a model, so a limit

@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
 import { basename, dirname } from "node:path"
 import type { V2ModelRef } from "../types"
-import { parseSelector, selector } from "./routes"
+import { parseSelector, selector, withoutDefaultVariant } from "./routes"
 import { DEFAULT_COOLDOWN_SCOPE, type CooldownScope } from "./settings"
 
 const FILE_VERSION = 1
@@ -83,7 +83,10 @@ function loadFile(file: string, now: number, onUnreadable: (text: string) => voi
     return entries
   }
   for (const [key, end] of Object.entries(parsed.cooldowns)) {
-    if (parseSelector(key) !== undefined && isLiveEnd(end, now)) entries.set(key, end)
+    const parsedKey = parseSelector(key)
+    if (parsedKey === undefined || !isLiveEnd(end, now)) continue
+    const name = selector(parsedKey)
+    if (end > (entries.get(name) ?? 0)) entries.set(name, end)
   }
   return entries
 }
@@ -147,7 +150,7 @@ export function createCooldowns({
   return {
     cool(model, untilMs) {
       if (!Number.isFinite(untilMs) || untilMs <= now()) return
-      const key = scope === "provider" ? providerKey(model.providerID) : selector(model)
+      const key = scope === "provider" ? providerKey(model.providerID) : selector(withoutDefaultVariant(model))
       const end = Math.min(untilMs, MAX_COOLDOWN_END_MS)
       if (end <= (ends.get(key) ?? 0)) return
       ends.set(key, end)

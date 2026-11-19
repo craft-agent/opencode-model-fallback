@@ -569,6 +569,13 @@ not used.
   Moving between providers or accounts that run the same models then takes
   one step per model, not one per model and variant; a step with a variant
   still names exactly that variant, and an exact step wins over a bare one.
+- **The variant `default` is no variant.** OpenCode reads a session's model
+  with the variant `default` when none was chosen, and applies no variant for
+  it; its catalog never lists one. Read as a variant, it would key a cooldown
+  that no bare step finds and name a model no route wrote. So the package
+  reads `default` as no variant wherever it takes a model, from OpenCode, a
+  route or the cooldowns file. Any other variant OpenCode does not list is an
+  error there, so only that one name is read this way.
 
 ### Defaults
 

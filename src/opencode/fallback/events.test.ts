@@ -85,6 +85,12 @@ describe("a limited event", () => {
     ])
   })
 
+  test("names a model on OpenCode's default variant without it", async () => {
+    const host = await startMoves({ features: [EVENTS, LIMITS] })
+    await host.retry({ model: { ...FIRST, variant: "default" } })
+    expect(host.emits.map((emit) => (emit.data as { model: string }).model)).toEqual(["a/x"])
+  })
+
   test("names no agent as empty, and a consumer's limit with its reason", async () => {
     const host = await startMoves({
       features: [EVENTS, LIMITS],

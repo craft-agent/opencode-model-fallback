@@ -1,7 +1,7 @@
 import type { V2CatalogModel, V2Context, V2ModelRef, V2Session } from "../types"
 import { askUsable } from "./consumer"
 import type { Feature, FeatureApi } from "./feature"
-import { isRateLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
+import { eventModel, isRateLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
 import { coolOnLimit } from "./limits"
 import { selectAskedStep } from "./launch.select"
 import { withMove, type MoveRecord } from "./moves.record"
@@ -70,7 +70,7 @@ async function placeSession(ctx: V2Context, table: RouteTable, event: RetryEvent
   const agent = named ?? session.agent
   if (!hasRoute(table, agent)) return undefined
   const steps = table[agent]!
-  const place = placeOf(steps, event.model)
+  const place = placeOf(steps, eventModel(event))
   return place < 0 ? undefined : { session, agent, steps, place }
 }
 
@@ -107,7 +107,8 @@ async function moveOnLimit(
   event: RetryEvent,
   limit: Limit,
 ): Promise<void> {
-  const { sessionID, model } = event
+  const { sessionID } = event
+  const model = eventModel(event)
   const placed = await placeSession(ctx, table, event)
   if (!placed) return
   const { session, agent, steps, place } = placed
