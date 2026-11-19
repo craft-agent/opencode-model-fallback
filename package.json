@@ -1,6 +1,6 @@
 {
   "name": "@craftsamo/opencode-model-fallback",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Fall back between models in OpenCode when a primary agent or a subagent hits a limit.",
   "author": "craftsamo",
   "license": "LicenseRef-AGPL-3.0-Commons-Clause",
