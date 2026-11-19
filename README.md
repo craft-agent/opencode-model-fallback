@@ -222,7 +222,10 @@ fallback asks with):
   model down for `wait_ms` (the `cooldown_ms` setting when you give none, or
   zero) and moves a routed session on, with `a/x hit a limit: <reason>` as the
   move's reason (`a/x hit a limit` without one). One retry is asked once, even
-  though both the cooldown and the move read it.
+  though both the cooldown and the move read it. A provider, or a plugin in
+  front of one, that refuses in its own words (a plain error with neither a
+  quota type nor a 429) is a limit only once you say so here: match its text
+  and return the wait it names.
 
 No answer means the fallback decides as it would alone: no plugin registered, a
 handler that throws, an answer that does not fit the schema, a host without
