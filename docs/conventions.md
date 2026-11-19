@@ -563,6 +563,12 @@ not used.
   `routes: { "<agent>": ["<provider>/<model>#<variant>", …] }`, tried in
   order. A step is written as `/models` and an agent's `model` write it, with
   `#<variant>` added, so it can be copied from either without translation.
+- **A step without a variant stands for its model in every variant.** A
+  session on a variant the route does not name is placed on that step, and a
+  move onto such a step carries the session's variant when the model has it.
+  Moving between providers or accounts that run the same models then takes
+  one step per model, not one per model and variant; a step with a variant
+  still names exactly that variant, and an exact step wins over a bare one.
 
 ### Defaults
 

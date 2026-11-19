@@ -1,4 +1,4 @@
-import type { V2Context, V2ModelRef, V2Session } from "../types"
+import type { V2CatalogModel, V2Context, V2ModelRef, V2Session } from "../types"
 import { askUsable } from "./consumer"
 import type { Feature, FeatureApi } from "./feature"
 import { isRateLimit, reportedDelay, type Limit, type RetryEvent } from "./limit"
@@ -14,11 +14,29 @@ function hasRoute(table: RouteTable, agent: unknown): agent is string {
   return typeof agent === "string" && Object.hasOwn(table, agent)
 }
 
-/** The index of `model` in `steps`: the step equal to it, else, for a model with no variant, the first step of the same provider and ID. `-1` when the model is not a step. */
+/**
+ * The index of `model` in `steps`: the step equal to it, else the first step of
+ * the same provider and ID that stands for it. A step with no variant stands
+ * for the model in every variant, and a model with no variant is stood for by
+ * a step of any variant. `-1` when the model is not a step.
+ */
 function placeOf(steps: readonly V2ModelRef[], model: V2ModelRef): number {
   const exact = steps.findIndex((step) => modelsEqual(step, model))
-  if (exact >= 0 || model.variant) return exact
-  return steps.findIndex((step) => step.providerID === model.providerID && step.id === model.id)
+  if (exact >= 0) return exact
+  return steps.findIndex(
+    (step) =>
+      step.providerID === model.providerID && step.id === model.id && (!model.variant || step.variant === undefined),
+  )
+}
+
+/**
+ * `step` with `variant` when the step names none and its model in `catalog`
+ * has that variant; otherwise `step` as written.
+ */
+function carryVariant(step: V2ModelRef, variant: string | undefined, catalog: readonly V2CatalogModel[]): V2ModelRef {
+  if (step.variant !== undefined || variant === undefined) return step
+  const model = catalog.find((item) => item.providerID === step.providerID && item.id === step.id)
+  return model?.variants?.some((item) => item.id === variant) ? { ...step, variant } : step
 }
 
 /** Why a session leaves the model it was on, as the record and the notice tell it. */
@@ -98,7 +116,7 @@ async function moveOnLimit(
   const catalog = (await ctx.model!.list!({ location: { directory } })).data
   const { cooldowns, now } = api.state
   const { chosen } = await selectAskedStep(
-    steps.slice(place + 1),
+    steps.slice(place + 1).map((step) => carryVariant(step, model.variant, catalog)),
     catalog,
     (step) => cooldowns.until(step),
     (step) => askUsable(ctx, agent, step),

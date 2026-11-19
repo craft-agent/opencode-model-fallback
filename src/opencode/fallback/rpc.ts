@@ -19,7 +19,7 @@ export type StepsSchema<T> = {
 export type StepsUsableInput = {
   /** The agent the step belongs to. */
   agent: string
-  /** The step, `provider/model#variant` (no `#variant` for a step without one). */
+  /** The step, `provider/model#variant` (no `#variant` for a step without one, unless a move carries the session's variant onto it). */
   model: string
 }
 
