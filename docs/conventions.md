@@ -11,6 +11,10 @@ to a rule changes this file first, with its reason.
   `src/project.ts`; it keeps a name unambiguous where OpenCode lists every
   tool in one namespace. When the domain has a well-known command line,
   follow its word order, so a name maps to a command anyone can look up.
+- **Each part starts with a lowercase letter**, followed by lowercase
+  letters and digits, as in `<prefix>_ipv6_read`. Every harness accepts
+  letters, digits and `_` in a tool name; some refuse a name that starts with
+  a digit, which a part's first letter rules out.
 - **An ID is a public interface.** Permission rules and skills are written
   against it, so renaming one is a breaking change.
 - **Verbs are plain**: `create`, `edit`, `delete`, `add`, `remove`, and these
